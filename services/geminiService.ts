@@ -94,8 +94,8 @@ export class GeminiLiveClient {
     let finalSystemInstruction = getSystemInstruction(userProfile, boardDims.width, boardDims.height);
     
     if (context?.isReconnect) {
-      // STRONG RESUME INSTRUCTION
-      finalSystemInstruction += `\n\n**CRITICAL CONTEXT RESTORATION:**\nSTATUS: The connection dropped and we are resuming.\nTOPIC: "${context.topic || 'Unknown'}".\nACTION: Apologize briefly for the glitch, then IMMEDIATELY continue explaining the topic from where you likely left off. Do NOT restart the lesson or say "Hello" again.`;
+      // STRONG RESUME INSTRUCTION: FORCE NEW BOARD
+      finalSystemInstruction += `\n\n**CRITICAL: NETWORK RECOVERY MODE**\nSTATUS: The connection was lost and restored.\nACTION: The previous board state is potentially lost or overlapping. CALL \`create_new_board\` IMMEDIATELY as your first action.\nCONTEXT: We were discussing "${context.topic || 'the previous topic'}". Briefly recap the last point and continue on the new board.`;
     } else if (context?.topic) {
       finalSystemInstruction += `\n\n**SESSION CONTEXT:**\nThe user wants to learn about: "${context.topic}".\n\n**PROTOCOL:**\n1. Greet the user briefly and confirm the topic.\n2. **STOP** and wait for the user to speak or ask a question.\n3. DO NOT start teaching, lecturing, or drawing immediately. Let the user lead the start of the conversation.`;
     } else {

@@ -139,9 +139,6 @@ const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = ({
     const x = (relX - offsetX) * (internalW / renderW);
     const y = (relY - offsetY) * (internalH / renderH);
     
-    // Optional: Clamp to bounds or allow drawing slightly outside? 
-    // Allowing slightly outside is better for edge strokes.
-    
     return { x, y };
   };
 
@@ -284,17 +281,31 @@ const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = ({
   const writeText = (ctx: CanvasRenderingContext2D, payload: WriteTextPayload) => {
     const { text, x, y, color = '#ffffff', size = 18, align = 'left' } = payload;
     ctx.font = `${size}px sans-serif`;
-    ctx.fillStyle = color;
     ctx.textBaseline = 'top'; 
     ctx.textAlign = align as CanvasTextAlign;
+    
+    // Stroke (Outline)
+    ctx.strokeStyle = '#0f172a'; // Dark slate stroke
+    ctx.lineWidth = 4;
+    ctx.strokeText(text, x, y);
+
+    // Fill
+    ctx.fillStyle = color;
     ctx.fillText(text, x, y);
   };
 
   const writeFormula = (ctx: CanvasRenderingContext2D, payload: InsertMathFormulaPayload) => {
      const { expression, x, y, color = '#fbbf24', size = 28 } = payload;
      ctx.font = `italic ${size}px serif`;
-     ctx.fillStyle = color;
      ctx.textBaseline = 'top';
+     
+     // Stroke
+     ctx.strokeStyle = '#0f172a';
+     ctx.lineWidth = 4;
+     ctx.strokeText(expression, x, y);
+
+     // Fill
+     ctx.fillStyle = color;
      ctx.fillText(expression, x, y);
   };
 
