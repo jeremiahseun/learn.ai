@@ -231,4 +231,5 @@ export interface Session {
   lastAccessed: number;
   createdAt: number;
   topic?: string;
+  pdfContext?: string; // Base64 of PDF, ephemeral (not saved to localStorage if too big)
 }

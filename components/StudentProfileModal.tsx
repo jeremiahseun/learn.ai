@@ -1,5 +1,5 @@
 
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import { X, User, BookOpen, GraduationCap } from 'lucide-react';
 import { StudentProfile, LearningLevel } from '../types';
 
@@ -11,22 +11,22 @@ interface StudentProfileModalProps {
 }
 
 const StudentProfileModal: React.FC<StudentProfileModalProps> = ({ isOpen, onClose, profile, onSave }) => {
-  const [localProfile, setLocalProfile] = React.useState<StudentProfile>(profile);
+  const [localProfile, setLocalProfile] = useState<StudentProfile>(profile);
+  const [error, setError] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
-    // Reset local profile when modal opens
     if (isOpen) {
       setLocalProfile(profile);
+      setError(null);
     }
   }, [isOpen, profile]);
 
-  // Auto-resize textarea
   useEffect(() => {
     const textarea = textareaRef.current;
     if (textarea) {
       textarea.style.height = 'auto';
-      textarea.style.height = `${Math.min(textarea.scrollHeight, 120)}px`; // Max height approx 5 lines
+      textarea.style.height = `${Math.min(textarea.scrollHeight, 120)}px`;
     }
   }, [localProfile.interests, isOpen]);
 
@@ -34,6 +34,10 @@ const StudentProfileModal: React.FC<StudentProfileModalProps> = ({ isOpen, onClo
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!localProfile.name.trim()) {
+      setError("Name is required");
+      return;
+    }
     onSave(localProfile);
     onClose();
   };
@@ -57,10 +61,14 @@ const StudentProfileModal: React.FC<StudentProfileModalProps> = ({ isOpen, onClo
             <input
               type="text"
               value={localProfile.name}
-              onChange={e => setLocalProfile({ ...localProfile, name: e.target.value })}
-              className="w-full bg-slate-800 border border-slate-600 rounded-lg p-3 text-white focus:ring-2 focus:ring-blue-500 outline-none"
+              onChange={e => {
+                 setLocalProfile({ ...localProfile, name: e.target.value });
+                 if (e.target.value.trim()) setError(null);
+              }}
+              className={`w-full bg-slate-800 border ${error ? 'border-red-500' : 'border-slate-600'} rounded-lg p-3 text-white focus:ring-2 focus:ring-blue-500 outline-none`}
               placeholder="Enter your name"
             />
+            {error && <p className="text-red-500 text-xs mt-1">{error}</p>}
           </div>
 
           <div>
@@ -102,7 +110,8 @@ const StudentProfileModal: React.FC<StudentProfileModalProps> = ({ isOpen, onClo
 
           <button
             type="submit"
-            className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white font-bold py-3 rounded-lg shadow-lg shadow-blue-500/20 transition-all"
+            disabled={!localProfile.name.trim()}
+            className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white font-bold py-3 rounded-lg shadow-lg shadow-blue-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Save Profile
           </button>

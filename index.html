@@ -12,23 +12,36 @@
           extend: {
             colors: {
               slate: {
+                850: '#0f172a',
+                900: '#0f172a',
                 950: '#020617',
               },
-              brand: {
-                50: '#f0f9ff',
-                100: '#e0f2fe',
-                200: '#bae6fd',
-                300: '#7dd3fc',
-                400: '#38bdf8',
-                500: '#0ea5e9',
-                600: '#0284c7',
-                700: '#0369a1',
-                800: '#075985',
-                900: '#0c4a6e',
+              cyan: {
+                400: '#22d3ee',
+                500: '#06b6d4',
+              },
+              violet: {
+                500: '#8b5cf6',
               }
             },
             fontFamily: {
               sans: ['Inter', 'system-ui', 'sans-serif'],
+            },
+            animation: {
+              'spin-slow': 'spin 20s linear infinite',
+              'reverse-spin': 'spin 15s linear infinite reverse',
+              'float': 'float 6s ease-in-out infinite',
+              'pulse-glow': 'pulse-glow 4s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+            },
+            keyframes: {
+              float: {
+                '0%, 100%': { transform: 'translateY(0)' },
+                '50%': { transform: 'translateY(-20px)' },
+              },
+              'pulse-glow': {
+                '0%, 100%': { opacity: '0.5', transform: 'scale(1)' },
+                '50%': { opacity: '0.8', transform: 'scale(1.05)' },
+              }
             }
           }
         }
@@ -38,6 +51,7 @@
       body {
         background-color: #020617;
         font-family: 'Inter', sans-serif;
+        overflow-x: hidden;
       }
       /* Custom Scrollbar */
       ::-webkit-scrollbar {
@@ -45,14 +59,28 @@
         height: 8px;
       }
       ::-webkit-scrollbar-track {
-        background: #0f172a; 
+        background: #020617; 
       }
       ::-webkit-scrollbar-thumb {
-        background: #334155; 
+        background: #1e293b; 
         border-radius: 4px;
       }
       ::-webkit-scrollbar-thumb:hover {
-        background: #475569; 
+        background: #334155; 
+      }
+      
+      .glass-panel {
+        background: rgba(15, 23, 42, 0.6);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border: 1px solid rgba(255, 255, 255, 0.05);
+      }
+      
+      .holo-gradient-text {
+        background: linear-gradient(135deg, #22d3ee 0%, #8b5cf6 50%, #f472b6 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
       }
     </style>
   <script type="importmap">

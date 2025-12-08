@@ -1,10 +1,11 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Mic, MicOff, BrainCircuit, Info, LayoutTemplate, Volume2, ArrowLeft, User, PenTool, Eraser, MousePointer2, ChevronRight, ChevronLeft } from 'lucide-react';
+import { Mic, MicOff, BrainCircuit, Info, LayoutTemplate, Volume2, ArrowLeft, User, PenTool, Eraser, MousePointer2, ChevronRight, ChevronLeft, Play, Signal } from 'lucide-react';
 import WhiteboardCanvas from '../components/WhiteboardCanvas';
 import BoardCarousel from '../components/BoardCarousel';
 import ThinkingModal from '../components/ThinkingModal';
 import AudioPulse from '../components/AudioPulse';
+import NetworkStatus from '../components/NetworkStatus';
 import { ConnectionState, BoardCommand, StudentProfile, UserTool, Session, BoardData } from '../types';
 import { GeminiLiveClient } from '../services/geminiService';
 import { getSystemInstruction } from '../constants';
@@ -24,9 +25,10 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
   const [activeBoardId, setActiveBoardId] = useState<string>(session.boards[0]?.id || 'board-1');
   const [sessionTitle, setSessionTitle] = useState(session.title);
   
-  // Modals
+  // Modals & Overlays
   const [isThinkingOpen, setIsThinkingOpen] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [showStartOverlay, setShowStartOverlay] = useState(true);
   
   // User State
   const [userTool, setUserTool] = useState<UserTool>('pointer');
@@ -37,13 +39,10 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
   const [isMicMuted, setIsMicMuted] = useState(false);
   const [audioLevels, setAudioLevels] = useState({ input: 0, output: 0 });
 
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const audioOutputAnalyserRef = useRef<AnalyserNode | null>(null);
-  const nextStartTimeRef = useRef<number>(0);
   const liveClientRef = useRef<GeminiLiveClient | null>(null);
   const activeBoardIdRef = useRef(activeBoardId);
   
-  // Refs for saving
+  // Refs for saving & context
   const boardsRef = useRef(boards);
   const sessionTitleRef = useRef(sessionTitle);
 
@@ -60,7 +59,6 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
       clearInterval(timer);
       saveSessionState();
       liveClientRef.current?.disconnect();
-      audioContextRef.current?.close();
     };
   }, []);
 
@@ -96,38 +94,18 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
   };
 
   useEffect(() => {
-    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
-    if (AudioContextClass) {
-        try {
-          const ctx = new AudioContextClass({ sampleRate: 24000 });
-          audioContextRef.current = ctx;
-          const analyser = ctx.createAnalyser();
-          analyser.fftSize = 256;
-          analyser.smoothingTimeConstant = 0.1;
-          analyser.connect(ctx.destination);
-          audioOutputAnalyserRef.current = analyser;
-        } catch (e) {
-          console.warn("AudioContext with sampleRate not supported, falling back to default");
-          audioContextRef.current = new AudioContextClass();
-        }
-    }
-  }, []);
-
-  useEffect(() => {
     let animationFrameId: number;
     const pollVolumes = () => {
       if (connectionState === ConnectionState.CONNECTED) {
-        const inputLevel = liveClientRef.current?.getVolumeLevels().inputLevel || 0;
+        // Poll Input
+        const inputLevel = liveClientRef.current?.getVolumeLevels().input || 0;
+        
+        // Poll Output
         let outputLevel = 0;
-        if (audioOutputAnalyserRef.current) {
-          const dataArray = new Uint8Array(audioOutputAnalyserRef.current.frequencyBinCount);
-          audioOutputAnalyserRef.current.getByteFrequencyData(dataArray);
-          let sum = 0;
-          for (let i = 0; i < dataArray.length; i++) {
-            sum += dataArray[i];
-          }
-          outputLevel = (sum / dataArray.length) / 255;
+        if (liveClientRef.current) {
+             outputLevel = liveClientRef.current.getVolumeLevels().output || 0;
         }
+
         setAudioLevels({ input: inputLevel, output: outputLevel });
       } else {
         setAudioLevels({ input: 0, output: 0 });
@@ -170,27 +148,17 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
   };
 
   const handleUserDraw = (command: BoardCommand) => {
-    // Reset toolbar timer on draw
     interactToolbar();
-
     setBoards(prev => prev.map(b => {
       if (b.id === activeBoardId) {
         return { ...b, commands: [...b.commands, command], lastSaved: Date.now() };
       }
       return b;
     }));
-
-    if (connectionState === ConnectionState.CONNECTED && liveClientRef.current) {
-       let desc = "something";
-       if (command.type === 'stroke') desc = "a green stroke";
-       else if (command.type === 'erase-area') desc = "erased a part of the board";
-       
-       liveClientRef.current.sendText(`[System: The user just drew ${desc} at roughly x:${Math.floor(command.type === 'stroke' ? command.payload.points[0].x : 0)} y:${Math.floor(command.type === 'stroke' ? command.payload.points[0].y : 0)} on the board]`);
-    }
   };
 
   const executeBoardCommand = async (name: string, args: any): Promise<any> => {
-    console.log(`Executing tool: ${name} on board ${activeBoardIdRef.current}`);
+    // console.log(`Executing tool: ${name} on board ${activeBoardIdRef.current}`);
     
     const addCommand = (command: BoardCommand) => {
       setBoards(prev => prev.map(b => {
@@ -229,8 +197,16 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
     liveClientRef.current?.toggleMute(newMuteState);
   };
 
+  const handleStartSession = async () => {
+    console.log("[SessionView] User clicked Start Session");
+    setShowStartOverlay(false);
+    await toggleConnection();
+  };
+
   const toggleConnection = async () => {
+    console.log("[SessionView] Toggling connection...");
     if (connectionState === ConnectionState.CONNECTED || connectionState === ConnectionState.CONNECTING) {
+      console.log("[SessionView] Disconnecting...");
       liveClientRef.current?.disconnect();
       setConnectionState(ConnectionState.DISCONNECTED);
       return;
@@ -239,10 +215,6 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
     if (!apiKey) {
       setErrorMsg("No API Key found. Please check your environment configuration.");
       return;
-    }
-
-    if (audioContextRef.current?.state === 'suspended') {
-        await audioContextRef.current.resume();
     }
 
     setConnectionState(ConnectionState.CONNECTING);
@@ -254,68 +226,72 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
     try {
       const instruction = getSystemInstruction(user);
       
-      await liveClientRef.current.connect({
-        onAudioData: (buffer) => {
-          if (audioContextRef.current && audioOutputAnalyserRef.current) {
-             const ctx = audioContextRef.current;
-             const source = ctx.createBufferSource();
-             source.buffer = buffer;
-             source.connect(audioOutputAnalyserRef.current);
-             const now = ctx.currentTime;
-             const startTime = Math.max(now, nextStartTimeRef.current);
-             source.start(startTime);
-             nextStartTimeRef.current = startTime + buffer.duration;
+      await liveClientRef.current.connect(
+        {
+          onToolCall: async (name, args) => {
+            return executeBoardCommand(name, args);
+          },
+          onClose: () => {
+            console.log("[SessionView] Connection closed callback");
+            setConnectionState(ConnectionState.DISCONNECTED);
+          },
+          onError: (err) => {
+            console.error("[SessionView] Connection error callback", err);
+            setErrorMsg("Connection error: " + err.message);
+            setConnectionState(ConnectionState.ERROR);
           }
-        },
-        onToolCall: async (name, args) => {
-          return executeBoardCommand(name, args);
-        },
-        onClose: () => setConnectionState(ConnectionState.DISCONNECTED),
-        onError: (err) => {
-          console.error(err);
-          setErrorMsg("Connection error: " + err.message);
-          setConnectionState(ConnectionState.ERROR);
-        }
-      }, instruction);
+        }, 
+        instruction, 
+        { topic: session.topic, pdfBase64: session.pdfContext }
+      );
 
       setConnectionState(ConnectionState.CONNECTED);
+      console.log("[SessionView] Connection successful");
+
     } catch (e: any) {
+      console.error("[SessionView] Init error", e);
       setConnectionState(ConnectionState.ERROR);
-      setErrorMsg(e.message);
+      
+      if (e.message.includes('Microphone')) {
+         setErrorMsg("Microphone Access Denied. Please allow microphone permissions in your browser and try again.");
+      } else {
+         setErrorMsg(e.message);
+      }
     }
   };
 
   return (
-    <div className="flex flex-col h-screen bg-slate-950 text-slate-100 font-sans overflow-hidden">
+    <div className="flex flex-col h-screen bg-[#020617] text-slate-100 font-sans overflow-hidden">
+      {/* Background Glows */}
+      <div className="fixed inset-0 z-0 pointer-events-none">
+          <div className="absolute top-[-20%] left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-cyan-600/10 blur-[100px] rounded-full"></div>
+      </div>
       
       {/* Session Header */}
-      <header className="flex-none h-14 sm:h-16 border-b border-slate-800 flex items-center justify-between px-3 sm:px-6 bg-slate-950/80 backdrop-blur-md z-10">
-        <div className="flex items-center space-x-4">
-          <button onClick={() => { saveSessionState(); onExit(); }} className="text-slate-400 hover:text-white p-1 rounded-full hover:bg-slate-800">
+      <header className="flex-none h-16 border-b border-white/5 flex items-center justify-between px-3 sm:px-6 bg-[#020617]/80 backdrop-blur-xl z-20">
+        <div className="flex items-center space-x-2 sm:space-x-4">
+          <button onClick={() => { saveSessionState(); onExit(); }} className="text-slate-400 hover:text-white p-2 rounded-full hover:bg-white/10 transition-colors">
             <ArrowLeft size={20} />
           </button>
           <div className="flex items-center space-x-2">
-            <Logo size="sm" className="hidden sm:flex" />
-            <div className="h-6 w-px bg-slate-700 mx-2 hidden sm:block"></div>
+            <Logo size="sm" className="hidden lg:flex" />
+            <div className="h-6 w-px bg-white/10 mx-2 hidden lg:block"></div>
             <div>
               <input 
                 value={sessionTitle}
                 onChange={(e) => setSessionTitle(e.target.value)}
-                className="bg-transparent text-sm sm:text-base font-bold text-white focus:outline-none focus:border-b border-blue-500 w-32 sm:w-64"
+                className="bg-transparent text-sm sm:text-base font-bold text-white focus:outline-none focus:border-b border-cyan-500 w-24 sm:w-64 placeholder-slate-500 truncate"
                 placeholder="Lesson Title"
               />
-              <p className="text-[10px] text-slate-400 uppercase tracking-widest font-semibold hidden sm:block">
-                 {connectionState === ConnectionState.CONNECTED ? 'Live Session' : 'Offline'}
-              </p>
             </div>
           </div>
         </div>
 
-        {/* Audio Visualizer */}
+        {/* Audio Visualizer (Holo Style) */}
         {connectionState === ConnectionState.CONNECTED && (
-          <div className="hidden md:flex items-center space-x-4 px-8 py-2 bg-slate-900/50 rounded-full border border-slate-800/50 absolute left-1/2 -translate-x-1/2">
+          <div className="hidden md:flex items-center space-x-4 px-6 py-1.5 bg-black/40 rounded-full border border-cyan-500/30 shadow-[0_0_15px_rgba(34,211,238,0.15)] absolute left-1/2 -translate-x-1/2 backdrop-blur-md">
              <AudioPulse active={!isMicMuted} volume={isMicMuted ? 0 : audioLevels.input} color="blue" label="YOU" />
-             <div className="h-6 w-px bg-slate-800"></div>
+             <div className="h-6 w-px bg-white/10"></div>
              <AudioPulse active={true} volume={audioLevels.output} color="purple" label="AI" />
           </div>
         )}
@@ -324,42 +300,45 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
            {connectionState === ConnectionState.CONNECTED && (
              <button
                 onClick={toggleMute}
-                className={`p-2 sm:p-3 rounded-full transition-all border ${isMicMuted ? 'bg-red-500/20 text-red-400 border-red-500/50' : 'bg-slate-800 text-slate-400 hover:text-white border-slate-700'}`}
+                className={`p-2.5 rounded-full transition-all border ${isMicMuted ? 'bg-red-500/10 text-red-400 border-red-500/30' : 'bg-white/5 text-slate-300 hover:text-white border-white/10 hover:bg-white/10'}`}
              >
                {isMicMuted ? <MicOff size={18} /> : <Mic size={18} />}
              </button>
            )}
 
+           <NetworkStatus state={connectionState} />
+
            <button 
              onClick={() => setIsThinkingOpen(true)}
-             className="flex items-center space-x-1 sm:space-x-2 text-xs sm:text-sm text-purple-300 hover:text-white px-2 py-1 sm:px-3 sm:py-2 rounded-md hover:bg-purple-500/20 transition-colors"
+             className="hidden sm:flex items-center space-x-1 sm:space-x-2 text-xs sm:text-sm text-purple-300 hover:text-white px-3 py-2 rounded-lg hover:bg-purple-500/10 border border-transparent hover:border-purple-500/30 transition-all"
            >
              <BrainCircuit size={16} />
-             <span className="hidden sm:inline">Deep Think</span>
+             <span>Deep Think</span>
            </button>
 
            <button 
              onClick={toggleConnection}
              className={`
-               flex items-center space-x-2 px-4 sm:px-6 py-2 rounded-full font-semibold transition-all shadow-lg text-sm sm:text-base
+               flex items-center space-x-2 px-3 sm:px-5 py-2 rounded-full font-bold transition-all shadow-lg text-xs sm:text-sm
                ${connectionState === ConnectionState.CONNECTED 
-                 ? 'bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/50' 
+                 ? 'bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/30 hover:shadow-[0_0_15px_rgba(239,68,68,0.3)]' 
                  : connectionState === ConnectionState.CONNECTING
-                   ? 'bg-yellow-500/10 text-yellow-400 border border-yellow-500/50'
-                   : 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-500/20'
+                   ? 'bg-yellow-500/10 text-yellow-400 border border-yellow-500/30'
+                   : 'bg-white/10 text-slate-300 hover:bg-white/20'
                }
              `}
            >
              {connectionState === ConnectionState.CONNECTED ? <Volume2 size={16} /> : <Mic size={16} />}
-             <span>{connectionState === ConnectionState.CONNECTED ? 'End' : connectionState === ConnectionState.CONNECTING ? '...' : 'Start'}</span>
+             <span className="hidden sm:inline">{connectionState === ConnectionState.CONNECTED ? 'End Session' : connectionState === ConnectionState.CONNECTING ? 'Connecting...' : 'Connect'}</span>
            </button>
         </div>
       </header>
 
       {/* Main Content */}
       <main className="flex-1 relative overflow-hidden flex flex-col" onMouseMove={interactToolbar} onTouchStart={interactToolbar}>
-        <div className="flex-1 relative bg-slate-900 flex items-center justify-center p-2 sm:p-6 lg:p-8">
-           <div className="relative w-full h-full max-w-[1400px] aspect-square sm:aspect-[16/9] shadow-2xl rounded-xl overflow-hidden ring-1 ring-slate-800 bg-slate-800">
+        <div className="flex-1 relative flex items-center justify-center p-2 sm:p-6 lg:p-8">
+           {/* Canvas Container with Glass Border */}
+           <div className="relative w-full h-full max-w-[1400px] aspect-square sm:aspect-[16/9] rounded-2xl overflow-hidden glass-panel border border-white/10 shadow-2xl">
               <WhiteboardCanvas 
                 commands={getActiveBoard().commands} 
                 width={1000} 
@@ -368,43 +347,54 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
                 onUserDraw={handleUserDraw}
               />
 
-              {/* Collapsible Toolbar */}
+              {/* Floating Toolbar (Glass) */}
               <div 
                 className={`
-                  absolute top-4 left-4 flex flex-col space-y-2 bg-slate-900/90 backdrop-blur p-2 rounded-lg border border-slate-700 shadow-xl transition-all duration-300
+                  absolute top-4 left-4 flex flex-col space-y-2 bg-black/60 backdrop-blur-xl p-2 rounded-xl border border-white/10 shadow-xl transition-all duration-300
                   ${isToolbarOpen ? 'translate-x-0 opacity-100' : '-translate-x-full opacity-0 pointer-events-none sm:translate-x-0 sm:opacity-100 sm:pointer-events-auto'}
                 `}
               >
-                 <button onClick={() => { setUserTool('pointer'); interactToolbar(); }} className={`p-2 rounded hover:bg-slate-700 transition ${userTool === 'pointer' ? 'bg-blue-600 text-white' : 'text-slate-400'}`} title="Pointer"><MousePointer2 size={20} /></button>
-                 <button onClick={() => { setUserTool('pen'); interactToolbar(); }} className={`p-2 rounded hover:bg-slate-700 transition ${userTool === 'pen' ? 'bg-blue-600 text-white' : 'text-slate-400'}`} title="Draw"><PenTool size={20} /></button>
-                 <button onClick={() => { setUserTool('eraser'); interactToolbar(); }} className={`p-2 rounded hover:bg-slate-700 transition ${userTool === 'eraser' ? 'bg-blue-600 text-white' : 'text-slate-400'}`} title="Eraser"><Eraser size={20} /></button>
+                 <button onClick={() => { setUserTool('pointer'); interactToolbar(); }} className={`p-2.5 rounded-lg hover:bg-white/10 transition ${userTool === 'pointer' ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/50' : 'text-slate-400'}`} title="Pointer"><MousePointer2 size={20} /></button>
+                 <button onClick={() => { setUserTool('pen'); interactToolbar(); }} className={`p-2.5 rounded-lg hover:bg-white/10 transition ${userTool === 'pen' ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/50' : 'text-slate-400'}`} title="Draw"><PenTool size={20} /></button>
+                 <button onClick={() => { setUserTool('eraser'); interactToolbar(); }} className={`p-2.5 rounded-lg hover:bg-white/10 transition ${userTool === 'eraser' ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/50' : 'text-slate-400'}`} title="Eraser"><Eraser size={20} /></button>
               </div>
 
-              {/* Toolbar Toggle Trigger (Visible when toolbar is hidden on mobile) */}
+              {/* Mobile Toolbar Toggle */}
               <div 
                 onClick={interactToolbar}
                 className={`
-                  absolute top-4 left-0 bg-slate-800/80 p-2 rounded-r-lg border-y border-r border-slate-700 text-slate-400 cursor-pointer sm:hidden transition-all duration-300
+                  absolute top-4 left-0 bg-black/60 backdrop-blur p-2 rounded-r-lg border-y border-r border-white/10 text-cyan-400 cursor-pointer sm:hidden transition-all duration-300
                   ${isToolbarOpen ? '-translate-x-full' : 'translate-x-0'}
                 `}
               >
                 <ChevronRight size={20} />
               </div>
               
-              {getActiveBoard().commands.length === 0 && userTool === 'pointer' && (
-                <div className="absolute inset-0 flex items-center justify-center pointer-events-none p-4">
-                  <div className="text-slate-600 flex flex-col items-center p-4 sm:p-8 bg-slate-900/50 rounded-xl backdrop-blur-sm text-center">
-                    <Info size={32} className="mb-4 opacity-50" />
-                    <p className="text-base sm:text-lg font-medium">Click "Start" to begin your lesson.</p>
-                  </div>
+              {/* Start Overlay (Ready State) */}
+              {showStartOverlay && connectionState === ConnectionState.DISCONNECTED && (
+                <div className="absolute inset-0 z-40 bg-black/60 backdrop-blur-md flex items-center justify-center p-6">
+                    <div className="relative text-center max-w-lg w-full">
+                       <div className="absolute inset-0 bg-cyan-500/20 blur-[100px] rounded-full animate-pulse-glow"></div>
+                       <div className="relative z-10 flex flex-col items-center">
+                          <button 
+                            onClick={handleStartSession}
+                            className="w-32 h-32 rounded-full bg-gradient-to-br from-cyan-500 to-blue-600 shadow-[0_0_50px_rgba(34,211,238,0.5)] flex items-center justify-center text-white mb-8 hover:scale-105 hover:shadow-[0_0_70px_rgba(34,211,238,0.7)] transition-all animate-float"
+                          >
+                             <Mic size={48} />
+                          </button>
+                          <h2 className="text-3xl font-bold text-white mb-3">Ready to Learn?</h2>
+                          <p className="text-slate-400 mb-6">Topic: <span className="text-cyan-400">{session.topic || "General Discussion"}</span></p>
+                          <p className="text-slate-500 text-sm max-w-sm mx-auto">Click the button to connect to the Live AI Tutor. The AI will start by introducing the topic.</p>
+                       </div>
+                    </div>
                 </div>
               )}
            </div>
         </div>
-        {errorMsg && <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-red-500/90 text-white px-4 py-2 rounded-md shadow-lg text-sm z-50 animate-bounce">{errorMsg}</div>}
+        {errorMsg && <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-red-500/90 text-white px-6 py-3 rounded-xl shadow-lg border border-red-500/50 text-sm z-50 animate-bounce font-medium">{errorMsg}</div>}
       </main>
 
-      <footer className="flex-none z-10">
+      <footer className="flex-none z-10 bg-[#020617]/80 backdrop-blur-xl border-t border-white/5">
         <BoardCarousel 
           boards={boards} 
           activeBoardId={activeBoardId}

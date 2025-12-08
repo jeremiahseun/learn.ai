@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { StorageService } from './services/storageService';
 import { StudentProfile, Session } from './types';
@@ -37,10 +38,6 @@ const App: React.FC = () => {
   };
 
   const handleCreateProfile = (profileData: StudentProfile) => {
-    // This is called from the modal. We need to add ID and createdAt if missing, 
-    // but the modal usually returns just the edit fields. 
-    // Let's assume the modal returns a partial or full object.
-    
     // If it's a new user
     const newUser: StudentProfile = {
       ...profileData,
@@ -59,8 +56,15 @@ const App: React.FC = () => {
     setView('landing');
   };
 
-  const handleNewSession = () => {
-    const session = StorageService.createSession();
+  const handleNewSession = (topic: string, pdfContext?: string) => {
+    // Create session in storage
+    const session = StorageService.createSession(topic);
+    
+    // Inject ephemeral PDF context if it exists
+    if (pdfContext) {
+        session.pdfContext = pdfContext;
+    }
+
     setSessions(StorageService.getSessions());
     setCurrentSession(session);
     setView('session');
