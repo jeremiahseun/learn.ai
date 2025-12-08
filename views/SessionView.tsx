@@ -1,6 +1,6 @@
 
-import React, { useState, useEffect, useRef } from 'react';
-import { Mic, MicOff, BrainCircuit, Info, LayoutTemplate, Volume2, ArrowLeft, User, PenTool, Eraser, MousePointer2, ChevronRight, ChevronLeft, Play, Signal } from 'lucide-react';
+import React, { useState, useEffect, useRef, useLayoutEffect } from 'react';
+import { Mic, MicOff, BrainCircuit, Info, LayoutTemplate, Volume2, ArrowLeft, User, PenTool, Eraser, MousePointer2, ChevronRight, ChevronLeft, Play, Signal, Smartphone, RotateCw } from 'lucide-react';
 import WhiteboardCanvas from '../components/WhiteboardCanvas';
 import BoardCarousel from '../components/BoardCarousel';
 import ThinkingModal from '../components/ThinkingModal';
@@ -8,7 +8,6 @@ import AudioPulse from '../components/AudioPulse';
 import NetworkStatus from '../components/NetworkStatus';
 import { ConnectionState, BoardCommand, StudentProfile, UserTool, Session, BoardData } from '../types';
 import { GeminiLiveClient } from '../services/geminiService';
-import { getSystemInstruction } from '../constants';
 import Logo from '../components/Logo';
 
 interface SessionViewProps {
@@ -39,6 +38,11 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
   const [isMicMuted, setIsMicMuted] = useState(false);
   const [audioLevels, setAudioLevels] = useState({ input: 0, output: 0 });
   const [retryCount, setRetryCount] = useState(0);
+  
+  // Board Dimensions
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [boardDims, setBoardDims] = useState({ width: 1000, height: 1000 });
+  const [isPortraitMobile, setIsPortraitMobile] = useState(false);
 
   const liveClientRef = useRef<GeminiLiveClient | null>(null);
   const activeBoardIdRef = useRef(activeBoardId);
@@ -50,6 +54,41 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
   useEffect(() => { activeBoardIdRef.current = activeBoardId; }, [activeBoardId]);
   useEffect(() => { boardsRef.current = boards; }, [boards]);
   useEffect(() => { sessionTitleRef.current = sessionTitle; }, [sessionTitle]);
+
+  // Dimension & Orientation Logic
+  useLayoutEffect(() => {
+    const updateDimensions = () => {
+      // Check for mobile portrait
+      if (window.innerWidth < window.innerHeight && window.innerWidth < 700) {
+        setIsPortraitMobile(true);
+        return;
+      } else {
+        setIsPortraitMobile(false);
+      }
+
+      if (containerRef.current) {
+        const { clientWidth, clientHeight } = containerRef.current;
+        // Fix logical width to 1000. Calculate logical height based on aspect ratio.
+        // AR = W / H.  1000 / h = W / H  => h = 1000 * H / W
+        const ratio = clientHeight / clientWidth;
+        const logicalHeight = Math.round(1000 * ratio);
+        
+        setBoardDims({
+          width: 1000,
+          height: logicalHeight
+        });
+        console.log(`[SessionView] Board Dims Updated: 1000x${logicalHeight} (Screen: ${clientWidth}x${clientHeight})`);
+      }
+    };
+
+    window.addEventListener('resize', updateDimensions);
+    updateDimensions();
+    
+    // Give it a moment for layout to settle
+    setTimeout(updateDimensions, 100);
+
+    return () => window.removeEventListener('resize', updateDimensions);
+  }, []);
 
   // Auto-save on unmount or change
   useEffect(() => {
@@ -177,6 +216,7 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
   const executeBoardCommand = async (name: string, args: any): Promise<any> => {
     // console.log(`Executing tool: ${name} on board ${activeBoardIdRef.current}`);
     
+    // Helper to add command to CURRENT active board
     const addCommand = (command: BoardCommand) => {
       setBoards(prev => prev.map(b => {
         if (b.id === activeBoardIdRef.current) {
@@ -196,12 +236,21 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
     if (name === 'highlight_area') { addCommand({ type: 'highlight', payload: args }); return "highlighted"; }
     if (name === 'write_text') { addCommand({ type: 'text', payload: args }); return "written text"; }
     if (name === 'write_formula') { addCommand({ type: 'formula', payload: args }); return "written formula"; }
+    if (name === 'play_sound') { 
+        // Mock sound player
+        console.log(`Playing sound: ${args.sound}`); 
+        // In future: new Audio(`/sounds/${args.sound}.mp3`).play();
+        return "played sound"; 
+    }
+    if (name === 'insert_image') { addCommand({ type: 'image', payload: args }); return "inserted image"; }
     if (name === 'clear_board') { addCommand({ type: 'clear' }); return "cleared"; }
     if (name === 'create_new_board') {
       const newId = `board-${Date.now()}`;
+      // CRITICAL: Update state AND ref synchronously for next iteration
       setBoards(prev => [...prev, { id: newId, commands: [], lastSaved: Date.now() }]);
       setActiveBoardId(newId); 
       activeBoardIdRef.current = newId; 
+      console.log(`[SessionView] Created new board: ${newId}`);
       return `created board ${newId}`;
     }
 
@@ -245,13 +294,6 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
     liveClientRef.current = new GeminiLiveClient(apiKey);
 
     try {
-      let instruction = getSystemInstruction(user);
-      
-      // Append resumption context if reconnecting
-      if (isReconnect) {
-        instruction += `\n\n**IMPORTANT: RESUMPTION**\nThe connection was briefly interrupted. We are reconnecting now. Please apologize briefly and continue explaining exactly where you left off. Do not restart the lesson introduction.`;
-      }
-      
       await liveClientRef.current.connect(
         {
           onToolCall: async (name, args) => {
@@ -265,10 +307,9 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
             console.error("[SessionView] Connection error callback", err);
             
             // IGNORE generic "Internal error" if we are in a retry-able state
-            // This prevents flashing "Error" toast right before auto-reconnect kicks in
             if (err.message.includes("Internal error") && retryCount < 3) {
                console.log("[SessionView] Suppressing internal error for auto-reconnect");
-               setConnectionState(ConnectionState.ERROR); // This triggers the useEffect
+               setConnectionState(ConnectionState.ERROR); 
                return;
             }
 
@@ -276,10 +317,13 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
             setConnectionState(ConnectionState.ERROR);
           }
         }, 
-        instruction, 
-        // Only pass Topic/PDF on FIRST connect, not reconnect (to save context window/avoid duplication if needed)
-        // Or keep it to ensure context. Let's keep it but the system instruction update handles the "resumption" logic.
-        { topic: session.topic, pdfBase64: session.pdfContext }
+        user,
+        boardDims, // Pass calculated dimensions
+        { 
+            topic: session.topic, 
+            pdfBase64: session.pdfContext,
+            isReconnect: isReconnect
+        }
       );
 
       setConnectionState(ConnectionState.CONNECTED);
@@ -296,6 +340,17 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
       }
     }
   };
+
+  // Orientation Blocker
+  if (isPortraitMobile) {
+    return (
+      <div className="fixed inset-0 bg-slate-900 z-50 flex flex-col items-center justify-center p-8 text-center">
+         <RotateCw size={48} className="text-cyan-400 animate-spin-slow mb-6" />
+         <h2 className="text-2xl font-bold text-white mb-2">Please Rotate Your Device</h2>
+         <p className="text-slate-400">For the best whiteboard experience, please use landscape mode.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-screen bg-[#020617] text-slate-100 font-sans overflow-hidden">
@@ -381,11 +436,14 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
       <main className="flex-1 relative overflow-hidden flex flex-col" onMouseMove={interactToolbar} onTouchStart={interactToolbar}>
         <div className="flex-1 relative flex items-center justify-center p-2 sm:p-6 lg:p-8">
            {/* Canvas Container with Glass Border */}
-           <div className="relative w-full h-full max-w-[1400px] aspect-square sm:aspect-[16/9] rounded-2xl overflow-hidden glass-panel border border-white/10 shadow-2xl">
+           <div 
+             ref={containerRef}
+             className="relative w-full h-full max-w-[1400px] rounded-2xl overflow-hidden glass-panel border border-white/10 shadow-2xl"
+           >
               <WhiteboardCanvas 
                 commands={getActiveBoard().commands} 
-                width={1000} 
-                height={1000} 
+                width={boardDims.width} 
+                height={boardDims.height} 
                 userTool={userTool}
                 onUserDraw={handleUserDraw}
               />

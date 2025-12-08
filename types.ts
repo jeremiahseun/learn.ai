@@ -69,7 +69,13 @@ export interface InsertImagePayload {
   y: number;
   width: number;
   height: number;
-  dataUrl: string;
+  dataUrl: string; // or url
+  alt?: string;
+}
+
+export interface PlaySoundPayload {
+  sound: string; // 'bell', 'correct', 'history_quote', etc.
+  caption?: string;
 }
 
 export interface MoveElementPayload {
@@ -197,6 +203,7 @@ export type BoardCommand =
   | { type: 'comment'; payload: CommentPayload }
   | { type: 'formula'; payload: InsertMathFormulaPayload }
   | { type: 'audio'; payload: InsertAudioPayload }
+  | { type: 'play_sound'; payload: PlaySoundPayload }
   | { type: 'clear' };
 
 export enum ConnectionState {

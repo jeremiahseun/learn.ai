@@ -1,7 +1,8 @@
 
 import { GoogleGenAI, LiveServerMessage, Modality } from "@google/genai";
-import { MODEL_LIVE, MODEL_THINKING, TOOLS_DECLARATION } from "../constants";
+import { MODEL_LIVE, MODEL_THINKING, TOOLS_DECLARATION, getSystemInstruction } from "../constants";
 import { arrayBufferToBase64, decodeAudioData, float32ToPCM16, base64ToUint8Array } from "./audioUtils";
+import { StudentProfile } from "../types";
 
 interface LiveClientCallbacks {
   onToolCall: (name: string, args: any) => Promise<any>;
@@ -20,6 +21,7 @@ export class GeminiLiveClient {
   
   // Connection State
   private isActive = false;
+  private isReconnecting = false;
   
   // Audio Analysis & Gain
   private inputAnalyser: AnalyserNode | null = null;
@@ -36,10 +38,12 @@ export class GeminiLiveClient {
 
   async connect(
     callbacks: LiveClientCallbacks, 
-    baseSystemInstruction: string,
-    context?: { topic?: string, pdfBase64?: string }
+    userProfile: StudentProfile,
+    boardDims: { width: number, height: number },
+    context?: { topic?: string, pdfBase64?: string, isReconnect?: boolean }
   ) {
     console.log("[GeminiService] Initializing connection flow...");
+    this.isReconnecting = !!context?.isReconnect;
     
     // 1. Initialize Audio Contexts IMMEDIATELY (User Gesture Context)
     const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
@@ -86,9 +90,12 @@ export class GeminiLiveClient {
     this.nextStartTime = 0;
     this.scheduledSources = [];
 
-    // 3. Build System Instruction
-    let finalSystemInstruction = baseSystemInstruction;
-    if (context?.topic) {
+    // 3. Build System Instruction with Dimensions
+    let finalSystemInstruction = getSystemInstruction(userProfile, boardDims.width, boardDims.height);
+    
+    if (context?.isReconnect) {
+      finalSystemInstruction += `\n\n**IMPORTANT: RESUMPTION**\nThe connection was briefly interrupted. We are reconnecting now. Please apologize briefly and continue explaining exactly where you left off. Do not restart the lesson introduction.`;
+    } else if (context?.topic) {
       finalSystemInstruction += `\n\n**SESSION CONTEXT:**\nThe user wants to learn about: "${context.topic}".\n\n**PROTOCOL:**\n1. Greet the user briefly and confirm the topic.\n2. **STOP** and wait for the user to speak or ask a question.\n3. DO NOT start teaching, lecturing, or drawing immediately. Let the user lead the start of the conversation.`;
     } else {
       finalSystemInstruction += `\n\n**PROTOCOL:**\nGreet the user and ask what they would like to learn today. Wait for their response.`;
@@ -119,6 +126,7 @@ export class GeminiLiveClient {
         callbacks: {
           onopen: async () => {
             console.log("[GeminiService] Session Opened");
+            this.isReconnecting = false;
           },
           onmessage: async (message: LiveServerMessage) => {
             if (!this.isActive) return;
@@ -180,7 +188,6 @@ export class GeminiLiveClient {
           },
           onclose: () => {
             console.log("[GeminiService] Session Closed");
-            // Only trigger close callback if we were previously active
             if (this.isActive) {
                 this.isActive = false;
                 this.cleanup();
@@ -189,7 +196,10 @@ export class GeminiLiveClient {
           },
           onerror: (err) => {
             console.error("[GeminiService] Session Error", err);
-            // Ignore internal errors if we are already cleaning up
+            // Ignore internal errors if we are reconnecting or cleaning up
+            if (this.isReconnecting && err.message.includes("Internal error")) {
+                return;
+            }
             if (this.isActive) {
                 this.isActive = false;
                 this.cleanup();
@@ -261,13 +271,6 @@ export class GeminiLiveClient {
         if (!this.isActive) return;
 
         const inputData = e.inputBuffer.getChannelData(0);
-        
-        // Simple RMS check for logging silence vs voice
-        // let sum = 0;
-        // for (let i = 0; i < inputData.length; i++) {
-        //    sum += inputData[i] * inputData[i];
-        // }
-        // const rms = Math.sqrt(sum / inputData.length);
         
         // Downsample/Convert float32 to PCM16
         const pcm16 = float32ToPCM16(inputData);
