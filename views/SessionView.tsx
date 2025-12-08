@@ -38,6 +38,7 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
   // Audio Controls
   const [isMicMuted, setIsMicMuted] = useState(false);
   const [audioLevels, setAudioLevels] = useState({ input: 0, output: 0 });
+  const [retryCount, setRetryCount] = useState(0);
 
   const liveClientRef = useRef<GeminiLiveClient | null>(null);
   const activeBoardIdRef = useRef(activeBoardId);
@@ -61,6 +62,22 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
       liveClientRef.current?.disconnect();
     };
   }, []);
+
+  // Auto-Reconnect Strategy
+  useEffect(() => {
+    if (connectionState === ConnectionState.ERROR && retryCount < 3) {
+       console.log(`[SessionView] Connection dropped. Auto-reconnecting (Attempt ${retryCount + 1}/3)...`);
+       const timer = setTimeout(() => {
+          setRetryCount(prev => prev + 1);
+          connectSession(true); // isReconnect = true
+       }, 3000);
+       return () => clearTimeout(timer);
+    }
+    
+    if (connectionState === ConnectionState.CONNECTED) {
+       setRetryCount(0); // Reset retries on success
+    }
+  }, [connectionState, retryCount]);
 
   // Toolbar Auto-Hide Logic
   useEffect(() => {
@@ -200,15 +217,18 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
   const handleStartSession = async () => {
     console.log("[SessionView] User clicked Start Session");
     setShowStartOverlay(false);
-    await toggleConnection();
+    await connectSession(false);
   };
 
-  const toggleConnection = async () => {
-    console.log("[SessionView] Toggling connection...");
-    if (connectionState === ConnectionState.CONNECTED || connectionState === ConnectionState.CONNECTING) {
+  const connectSession = async (isReconnect: boolean = false) => {
+    console.log(`[SessionView] Toggling connection... (isReconnect: ${isReconnect})`);
+    
+    // If disconnecting manual click
+    if (!isReconnect && (connectionState === ConnectionState.CONNECTED || connectionState === ConnectionState.CONNECTING)) {
       console.log("[SessionView] Disconnecting...");
       liveClientRef.current?.disconnect();
       setConnectionState(ConnectionState.DISCONNECTED);
+      setRetryCount(3); // Stop auto-reconnects on manual disconnect
       return;
     }
 
@@ -218,13 +238,19 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
     }
 
     setConnectionState(ConnectionState.CONNECTING);
-    setErrorMsg(null);
-    setIsMicMuted(false);
+    // Only clear error message if we aren't in a retry loop (to keep UI clean or show retry status)
+    if (!isReconnect) setErrorMsg(null);
+    if (!isReconnect) setIsMicMuted(false);
 
     liveClientRef.current = new GeminiLiveClient(apiKey);
 
     try {
-      const instruction = getSystemInstruction(user);
+      let instruction = getSystemInstruction(user);
+      
+      // Append resumption context if reconnecting
+      if (isReconnect) {
+        instruction += `\n\n**IMPORTANT: RESUMPTION**\nThe connection was briefly interrupted. We are reconnecting now. Please apologize briefly and continue explaining exactly where you left off. Do not restart the lesson introduction.`;
+      }
       
       await liveClientRef.current.connect(
         {
@@ -237,11 +263,22 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
           },
           onError: (err) => {
             console.error("[SessionView] Connection error callback", err);
+            
+            // IGNORE generic "Internal error" if we are in a retry-able state
+            // This prevents flashing "Error" toast right before auto-reconnect kicks in
+            if (err.message.includes("Internal error") && retryCount < 3) {
+               console.log("[SessionView] Suppressing internal error for auto-reconnect");
+               setConnectionState(ConnectionState.ERROR); // This triggers the useEffect
+               return;
+            }
+
             setErrorMsg("Connection error: " + err.message);
             setConnectionState(ConnectionState.ERROR);
           }
         }, 
         instruction, 
+        // Only pass Topic/PDF on FIRST connect, not reconnect (to save context window/avoid duplication if needed)
+        // Or keep it to ensure context. Let's keep it but the system instruction update handles the "resumption" logic.
         { topic: session.topic, pdfBase64: session.pdfContext }
       );
 
@@ -306,7 +343,7 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
              </button>
            )}
 
-           <NetworkStatus state={connectionState} />
+           <NetworkStatus state={connectionState === ConnectionState.ERROR && retryCount > 0 ? ConnectionState.CONNECTING : connectionState} />
 
            <button 
              onClick={() => setIsThinkingOpen(true)}
@@ -317,19 +354,25 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
            </button>
 
            <button 
-             onClick={toggleConnection}
+             onClick={() => connectSession(false)}
              className={`
                flex items-center space-x-2 px-3 sm:px-5 py-2 rounded-full font-bold transition-all shadow-lg text-xs sm:text-sm
                ${connectionState === ConnectionState.CONNECTED 
                  ? 'bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/30 hover:shadow-[0_0_15px_rgba(239,68,68,0.3)]' 
-                 : connectionState === ConnectionState.CONNECTING
+                 : connectionState === ConnectionState.CONNECTING || (connectionState === ConnectionState.ERROR && retryCount > 0)
                    ? 'bg-yellow-500/10 text-yellow-400 border border-yellow-500/30'
                    : 'bg-white/10 text-slate-300 hover:bg-white/20'
                }
              `}
            >
              {connectionState === ConnectionState.CONNECTED ? <Volume2 size={16} /> : <Mic size={16} />}
-             <span className="hidden sm:inline">{connectionState === ConnectionState.CONNECTED ? 'End Session' : connectionState === ConnectionState.CONNECTING ? 'Connecting...' : 'Connect'}</span>
+             <span className="hidden sm:inline">
+               {connectionState === ConnectionState.CONNECTED 
+                  ? 'End Session' 
+                  : (connectionState === ConnectionState.CONNECTING || (connectionState === ConnectionState.ERROR && retryCount > 0))
+                    ? (retryCount > 0 ? 'Reconnecting...' : 'Connecting...') 
+                    : 'Connect'}
+             </span>
            </button>
         </div>
       </header>

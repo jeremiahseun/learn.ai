@@ -18,6 +18,9 @@ export class GeminiLiveClient {
   private processor: ScriptProcessorNode | null = null;
   private source: MediaStreamAudioSourceNode | null = null;
   
+  // Connection State
+  private isActive = false;
+  
   // Audio Analysis & Gain
   private inputAnalyser: AnalyserNode | null = null;
   private outputAnalyser: AnalyserNode | null = null;
@@ -107,76 +110,103 @@ export class GeminiLiveClient {
 
     // 5. Connect to Websocket
     console.log("[GeminiService] Connecting to Gemini Live API...");
-    this.sessionPromise = this.client.live.connect({
-      model: MODEL_LIVE,
-      config,
-      callbacks: {
-        onopen: async () => {
-          console.log("[GeminiService] Session Opened");
-        },
-        onmessage: async (message: LiveServerMessage) => {
-          // Handle Audio
-          const audioData = message.serverContent?.modelTurn?.parts?.[0]?.inlineData?.data;
-          if (audioData && this.outputAudioContext) {
-             console.log("[GeminiService] Received audio chunk from model");
-             try {
-               const buffer = await decodeAudioData(
-                 base64ToUint8Array(audioData), 
-                 this.outputAudioContext
-               );
-               this.playAudio(buffer);
-             } catch (e) {
-               console.error("[GeminiService] Error decoding audio", e);
-             }
-          }
+    this.isActive = true; // Set active before connecting to allow callbacks to function
+    
+    try {
+      this.sessionPromise = this.client.live.connect({
+        model: MODEL_LIVE,
+        config,
+        callbacks: {
+          onopen: async () => {
+            console.log("[GeminiService] Session Opened");
+          },
+          onmessage: async (message: LiveServerMessage) => {
+            if (!this.isActive) return;
 
-          // Handle Tool Calls
-          const toolCall = message.toolCall;
-          if (toolCall) {
-            const functionResponses = [];
-            for (const fc of toolCall.functionCalls) {
-              console.log("[GeminiService] Tool call received:", fc.name, fc.args);
-              try {
-                // Execute the tool on the frontend (draw)
-                const result = await callbacks.onToolCall(fc.name, fc.args);
-                functionResponses.push({
-                  id: fc.id,
-                  name: fc.name,
-                  response: { result: result || "ok" }
-                });
-              } catch (e) {
-                console.error("[GeminiService] Tool execution error", e);
-                functionResponses.push({
-                  id: fc.id,
-                  name: fc.name,
-                  response: { error: "Failed to execute drawing command" }
-                });
+            // Handle Audio
+            const audioData = message.serverContent?.modelTurn?.parts?.[0]?.inlineData?.data;
+            if (audioData && this.outputAudioContext) {
+               console.log("[GeminiService] Received audio chunk from model");
+               try {
+                 const buffer = await decodeAudioData(
+                   base64ToUint8Array(audioData), 
+                   this.outputAudioContext
+                 );
+                 this.playAudio(buffer);
+               } catch (e) {
+                 console.error("[GeminiService] Error decoding audio", e);
+               }
+            }
+
+            // Handle Tool Calls
+            const toolCall = message.toolCall;
+            if (toolCall) {
+              const functionResponses = [];
+              for (const fc of toolCall.functionCalls) {
+                console.log("[GeminiService] Tool call received:", fc.name, fc.args);
+                try {
+                  // Execute the tool on the frontend (draw)
+                  const result = await callbacks.onToolCall(fc.name, fc.args);
+                  functionResponses.push({
+                    id: fc.id,
+                    name: fc.name,
+                    response: { result: result || "ok" }
+                  });
+                } catch (e) {
+                  console.error("[GeminiService] Tool execution error", e);
+                  functionResponses.push({
+                    id: fc.id,
+                    name: fc.name,
+                    response: { error: "Failed to execute drawing command" }
+                  });
+                }
+              }
+              
+              // Send response back to model
+              if (functionResponses.length > 0 && this.sessionPromise && this.isActive) {
+                 console.log("[GeminiService] Sending tool response back to model");
+                 this.sessionPromise.then(session => {
+                   if (!this.isActive) return;
+                   try {
+                     session.sendToolResponse({ functionResponses });
+                   } catch (e) {
+                     console.error("[GeminiService] Failed to send tool response", e);
+                   }
+                 }).catch(e => {
+                    // Session promise failed, ignore
+                 });
               }
             }
-            
-            // Send response back to model
-            if (functionResponses.length > 0 && this.sessionPromise) {
-               console.log("[GeminiService] Sending tool response back to model");
-               const session = await this.sessionPromise;
-               session.sendToolResponse({ functionResponses });
+          },
+          onclose: () => {
+            console.log("[GeminiService] Session Closed");
+            // Only trigger close callback if we were previously active
+            if (this.isActive) {
+                this.isActive = false;
+                this.cleanup();
+                callbacks.onClose();
+            }
+          },
+          onerror: (err) => {
+            console.error("[GeminiService] Session Error", err);
+            // Ignore internal errors if we are already cleaning up
+            if (this.isActive) {
+                this.isActive = false;
+                this.cleanup();
+                callbacks.onError(new Error(err.message));
             }
           }
-        },
-        onclose: () => {
-          console.log("[GeminiService] Session Closed");
-          this.cleanup();
-          callbacks.onClose();
-        },
-        onerror: (err) => {
-          console.error("[GeminiService] Session Error", err);
-          this.cleanup();
-          callbacks.onError(new Error(err.message));
         }
-      }
-    });
+      });
+      
+      await this.sessionPromise;
+      console.log("[GeminiService] Connection established.");
 
-    await this.sessionPromise;
-    console.log("[GeminiService] Connection established.");
+    } catch (e: any) {
+      this.isActive = false;
+      this.cleanup();
+      throw e;
+    }
   }
 
   private playAudio(buffer: AudioBuffer) {
@@ -228,27 +258,25 @@ export class GeminiLiveClient {
       this.processor = this.inputAudioContext.createScriptProcessor(4096, 1, 1);
 
       this.processor.onaudioprocess = (e) => {
+        if (!this.isActive) return;
+
         const inputData = e.inputBuffer.getChannelData(0);
         
         // Simple RMS check for logging silence vs voice
-        let sum = 0;
-        for (let i = 0; i < inputData.length; i++) {
-           sum += inputData[i] * inputData[i];
-        }
-        const rms = Math.sqrt(sum / inputData.length);
-        if (rms > 0.05) {
-             // console.log("[GeminiService] Detect voice input (sending...)"); // Uncomment for verbose logging
-        }
-
+        // let sum = 0;
+        // for (let i = 0; i < inputData.length; i++) {
+        //    sum += inputData[i] * inputData[i];
+        // }
+        // const rms = Math.sqrt(sum / inputData.length);
+        
         // Downsample/Convert float32 to PCM16
         const pcm16 = float32ToPCM16(inputData);
         const pcmBlob = new Uint8Array(pcm16.buffer);
         const base64Data = arrayBufferToBase64(pcmBlob.buffer);
 
         if (this.sessionPromise) {
-          // Send data regardless of whether promise is full resolved (it queues internally usually, 
-          // or we wait for .then)
           this.sessionPromise.then(session => {
+            if (!this.isActive) return;
             try {
               session.sendRealtimeInput({
                 media: {
@@ -257,12 +285,11 @@ export class GeminiLiveClient {
                 }
               });
             } catch (err) {
-              // Ignore sending errors if session is closing/closed
-              console.warn("[GeminiService] Failed to send audio chunk", err);
+              // Gracefully handle send errors if connection dropped
+              // console.warn("[GeminiService] Send failed (likely closed):", err);
             }
-          }).catch(err => {
-             // Session promise failed (e.g. connection error)
-             // console.debug("Session not available for audio sending");
+          }).catch(() => {
+             // Promise rejection (connection failed), ignore
           });
         }
       };
@@ -279,7 +306,6 @@ export class GeminiLiveClient {
     }
   }
 
-  // Toggle Microphone Mute
   toggleMute(muted: boolean) {
     if (this.mediaStream) {
       this.mediaStream.getAudioTracks().forEach(track => {
@@ -289,7 +315,6 @@ export class GeminiLiveClient {
     }
   }
 
-  // Get current volume levels (0.0 to 1.0)
   getVolumeLevels() {
     return {
       input: this.calculateVolume(this.inputAnalyser),
@@ -302,18 +327,22 @@ export class GeminiLiveClient {
     const dataArray = new Uint8Array(analyser.frequencyBinCount);
     analyser.getByteFrequencyData(dataArray);
     
-    // Calculate RMS-like average
     let sum = 0;
     for (let i = 0; i < dataArray.length; i++) {
       sum += dataArray[i];
     }
     const average = sum / dataArray.length;
-    return average / 255; // Normalize to 0-1
+    return average / 255; 
   }
 
   async disconnect() {
     console.log("[GeminiService] Disconnecting...");
+    this.isActive = false;
     this.cleanup();
+  }
+
+  isConnectionActive() {
+    return this.isActive;
   }
 
   private cleanup() {
@@ -324,13 +353,13 @@ export class GeminiLiveClient {
     this.nextStartTime = 0;
 
     this.mediaStream?.getTracks().forEach(track => track.stop());
-    this.processor?.disconnect();
-    this.source?.disconnect();
-    this.inputAnalyser?.disconnect();
-    this.outputAnalyser?.disconnect();
-    this.outputGain?.disconnect();
-    this.inputAudioContext?.close();
-    this.outputAudioContext?.close();
+    try { this.processor?.disconnect(); } catch(e){}
+    try { this.source?.disconnect(); } catch(e){}
+    try { this.inputAnalyser?.disconnect(); } catch(e){}
+    try { this.outputAnalyser?.disconnect(); } catch(e){}
+    try { this.outputGain?.disconnect(); } catch(e){}
+    try { this.inputAudioContext?.close(); } catch(e){}
+    try { this.outputAudioContext?.close(); } catch(e){}
     
     this.mediaStream = null;
     this.processor = null;
