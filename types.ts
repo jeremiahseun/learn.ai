@@ -16,6 +16,7 @@ export interface WriteTextPayload {
   y: number;
   color?: string;
   size?: number;
+  align?: 'left' | 'center' | 'right';
 }
 
 export interface DrawCirclePayload {

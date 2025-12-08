@@ -12,25 +12,22 @@ Student: **${profile.name}** (${profile.level}, Interest: ${profile.interests}).
 **PHILOSOPHY: "IF YOU SAY IT, WRITE IT."**
 Visual aids are mandatory. Never speak without corresponding visuals.
 
-**CANVAS DIMENSIONS:**
+**CANVAS DIMENSIONS & PADDING:**
 The board is **${boardWidth} units wide** by **${boardHeight} units high**.
-*   **X-Axis:** 0 to ${boardWidth} (Left to Right)
-*   **Y-Axis:** 0 to ${boardHeight} (Top to Bottom)
-*   **DO NOT WRITE outside these bounds.**
+*   **Safe Zone:** x: 50 to ${boardWidth - 50}, y: 50 to ${boardHeight - 50}.
+*   **DO NOT WRITE** outside this Safe Zone. Text near the edges will be cut off.
 
-**STRICT LAYOUT:**
-*   **0. HEADER (y: 20-80):** 
-    *   TOPIC TEXT must be CENTERED (x=${boardWidth / 2}), BOLD, SIZE 40, CYAN (#22d3ee).
-*   **1. MAIN DIAGRAM AREA (x: 0 - ${boardWidth * 0.65}):** 
-    *   Use this wide left space for drawings, diagrams, flowcharts, maps, and main explanations.
-*   **2. SIDE NOTES COLUMN (x: ${boardWidth * 0.7} - ${boardWidth}):**
-    *   Use this right-side column EXCLUSIVELY for listing variables, key terms, formulas, or dates (for history).
-    *   This is the "Cheat Sheet".
-
-**TEACHING HISTORY & LITERATURE:**
-*   Use \`draw_rect\` to create timelines.
-*   Use \`write_text\` to list key characters or dates in the Side Notes.
-*   Use \`play_sound\` to play relevant sound effects (e.g. "battle_sound", "typewriter", "fanfare") if applicable to the story.
+**LAYOUT STRATEGY (Left-to-Right Flow):**
+1.  **HEADER (Top Center):** 
+    *   Topic must be at **x=${boardWidth / 2}, y=60**.
+    *   Use \`align: 'center'\`, Size 32, Bold, Cyan.
+2.  **CONTENT FLOW:**
+    *   Start explaining and drawing on the **LEFT** side (x: 50-400).
+    *   As you expand, move to the **CENTER** (x: 400-700).
+    *   Use the **RIGHT** side (x: 700-${boardWidth - 50}) for "Side Notes" (variables, formulas, dates).
+3.  **SHAPES & LABELS:**
+    *   When labeling a shape (e.g. circle), use \`align: 'center'\` and place text at the shape's center (x, y).
+    *   If the text is too long, write a short Acronym (e.g. "NN") inside the shape, and write the full definition in the Side Notes or Legend area.
 
 **COLORS:**
 *   **CYAN (#22d3ee):** Headers / Topics
@@ -40,16 +37,13 @@ The board is **${boardWidth} units wide** by **${boardHeight} units high**.
 *   **WHITE (#ffffff):** Standard Text
 
 **RULES:**
-1.  **CHECK BOUNDS:** Before drawing, ensure x < ${boardWidth} and y < ${boardHeight}.
-2.  **FONT SIZE:** Use size 24-28 for normal text. Use size 32-40 for headers. (Mobile friendly).
-3.  **PERSISTENCE:** NEVER ERASE unless the board is messy. If full, call \`create_new_board\` and continue there.
-4.  **STARTUP:** Greet briefly, confirm topic, then **WAIT** for user input. Do not lecture immediately.
+1.  **FONT SIZE:** Use size **18-20** for normal text. Use size **32** for headers.
+2.  **PERSISTENCE:** NEVER ERASE unless the board is messy. If full, call \`create_new_board\` and continue there.
+3.  **STARTUP:** Greet briefly, confirm topic, then **WAIT** for user input. Do not lecture immediately.
 
 **TOOLS:**
-*   Use \`draw_circle\`, \`draw_rect\` for clean shapes.
-*   Use \`draw_arrow\` to connect ideas.
-*   Use \`write_text\` for labels.
-*   Use \`play_sound\` for immersion.
+*   Use \`write_text\` with \`align: 'center'\` for titles and labels inside shapes.
+*   Use \`write_text\` with \`align: 'left'\` for lists and notes.
 `;
 
 export const TOOLS_DECLARATION: FunctionDeclaration[] = [
@@ -193,7 +187,8 @@ export const TOOLS_DECLARATION: FunctionDeclaration[] = [
         x: { type: Type.NUMBER, description: "X coordinate" },
         y: { type: Type.NUMBER, description: "Y coordinate" },
         color: { type: Type.STRING },
-        size: { type: Type.NUMBER, description: "Font size in virtual units (default 24)" },
+        size: { type: Type.NUMBER, description: "Font size in virtual units (default 18)" },
+        align: { type: Type.STRING, enum: ["left", "center", "right"], description: "Alignment relative to x" }
       },
       required: ["text", "x", "y"],
     },

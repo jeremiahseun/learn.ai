@@ -90,11 +90,12 @@ export class GeminiLiveClient {
     this.nextStartTime = 0;
     this.scheduledSources = [];
 
-    // 3. Build System Instruction with Dimensions
+    // 3. Build System Instruction with Dimensions and Context
     let finalSystemInstruction = getSystemInstruction(userProfile, boardDims.width, boardDims.height);
     
     if (context?.isReconnect) {
-      finalSystemInstruction += `\n\n**IMPORTANT: RESUMPTION**\nThe connection was briefly interrupted. We are reconnecting now. Please apologize briefly and continue explaining exactly where you left off. Do not restart the lesson introduction.`;
+      // STRONG RESUME INSTRUCTION
+      finalSystemInstruction += `\n\n**CRITICAL CONTEXT RESTORATION:**\nSTATUS: The connection dropped and we are resuming.\nTOPIC: "${context.topic || 'Unknown'}".\nACTION: Apologize briefly for the glitch, then IMMEDIATELY continue explaining the topic from where you likely left off. Do NOT restart the lesson or say "Hello" again.`;
     } else if (context?.topic) {
       finalSystemInstruction += `\n\n**SESSION CONTEXT:**\nThe user wants to learn about: "${context.topic}".\n\n**PROTOCOL:**\n1. Greet the user briefly and confirm the topic.\n2. **STOP** and wait for the user to speak or ask a question.\n3. DO NOT start teaching, lecturing, or drawing immediately. Let the user lead the start of the conversation.`;
     } else {

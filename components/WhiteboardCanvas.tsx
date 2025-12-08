@@ -282,10 +282,11 @@ const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = ({
   };
 
   const writeText = (ctx: CanvasRenderingContext2D, payload: WriteTextPayload) => {
-    const { text, x, y, color = '#ffffff', size = 24 } = payload;
+    const { text, x, y, color = '#ffffff', size = 18, align = 'left' } = payload;
     ctx.font = `${size}px sans-serif`;
     ctx.fillStyle = color;
     ctx.textBaseline = 'top'; 
+    ctx.textAlign = align as CanvasTextAlign;
     ctx.fillText(text, x, y);
   };
 
