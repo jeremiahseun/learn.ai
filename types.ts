@@ -171,11 +171,17 @@ export interface InsertAudioPayload {
   audioUrl: string;
 }
 
+export interface LaserPointerPayload {
+  x: number;
+  y: number;
+}
+
 export interface BoardData {
   id: string;
   commands: BoardCommand[];
   thumbnail?: string; // Data URL
   lastSaved?: number; // Timestamp
+  gridActive?: boolean; // New: Board-specific grid state
 }
 
 export type BoardCommand = 

@@ -220,6 +220,19 @@ export class GeminiLiveClient {
     }
   }
 
+  // --- NEW: Method to send text messages (interruptions/nudges) ---
+  async sendText(text: string) {
+    if (!this.sessionPromise || !this.isActive) return;
+    try {
+      const session = await this.sessionPromise;
+      // Send text as a user turn
+      session.send({ parts: [{ text }] }, true);
+      console.log("[GeminiService] Sent text message:", text);
+    } catch (e) {
+      console.error("[GeminiService] Failed to send text:", e);
+    }
+  }
+
   private playAudio(buffer: AudioBuffer) {
     if (!this.outputAudioContext || !this.outputGain) return;
 

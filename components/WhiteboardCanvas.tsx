@@ -27,6 +27,7 @@ interface WhiteboardCanvasProps {
   userTool: UserTool;
   onUserDraw: (command: BoardCommand) => void;
   showGrid?: boolean;
+  laserPoint?: { x: number, y: number } | null; // New Prop for Laser
 }
 
 const WhiteboardCanvas = forwardRef<WhiteboardHandle, WhiteboardCanvasProps>(({ 
@@ -35,11 +36,15 @@ const WhiteboardCanvas = forwardRef<WhiteboardHandle, WhiteboardCanvasProps>(({
   height = 1080,
   userTool,
   onUserDraw,
-  showGrid = true
+  showGrid = true,
+  laserPoint
 }, ref) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [currentStroke, setCurrentStroke] = useState<Point[]>([]);
+  
+  // Laser Trail State (Point + Timestamp)
+  const [laserTrail, setLaserTrail] = useState<{x: number, y: number, id: number}[]>([]);
 
   // Expose methods to parent
   useImperativeHandle(ref, () => ({
@@ -49,6 +54,30 @@ const WhiteboardCanvas = forwardRef<WhiteboardHandle, WhiteboardCanvasProps>(({
       return canvas.toDataURL('image/png');
     }
   }));
+
+  // Update Laser Trail when new point arrives
+  useEffect(() => {
+    if (laserPoint) {
+       setLaserTrail(prev => [...prev, { ...laserPoint, id: Date.now() }]);
+    }
+  }, [laserPoint]);
+
+  // Laser Animation Loop (Fade out)
+  useEffect(() => {
+     let frameId: number;
+     const loop = () => {
+        const now = Date.now();
+        // Remove points older than 1.5 seconds
+        setLaserTrail(prev => {
+            if (prev.length === 0) return prev;
+            const filtered = prev.filter(p => now - p.id < 1500);
+            return filtered.length !== prev.length ? filtered : prev;
+        });
+        frameId = requestAnimationFrame(loop);
+     };
+     loop();
+     return () => cancelAnimationFrame(frameId);
+  }, []);
 
   // Render logic
   useEffect(() => {
@@ -83,7 +112,52 @@ const WhiteboardCanvas = forwardRef<WhiteboardHandle, WhiteboardCanvasProps>(({
       drawStroke(ctx, { points: currentStroke, color: '#4ADE80', width: 4 }); // Student draws in Green
     }
 
-  }, [commands, width, height, currentStroke, userTool, showGrid]);
+    // 5. Render Laser Trail
+    if (laserTrail.length > 0) {
+       renderLaser(ctx, laserTrail);
+    }
+
+  }, [commands, width, height, currentStroke, userTool, showGrid, laserTrail]);
+
+  const renderLaser = (ctx: CanvasRenderingContext2D, trail: {x: number, y: number, id: number}[]) => {
+     const now = Date.now();
+     ctx.lineCap = 'round';
+     ctx.lineJoin = 'round';
+
+     // Draw the trail
+     if (trail.length > 1) {
+        ctx.beginPath();
+        // Start from first point
+        ctx.moveTo(trail[0].x, trail[0].y);
+        
+        for (let i = 1; i < trail.length; i++) {
+           ctx.lineTo(trail[i].x, trail[i].y);
+        }
+        
+        ctx.shadowBlur = 20;
+        ctx.shadowColor = '#fca5a5'; // Red glow
+        ctx.strokeStyle = 'rgba(252, 165, 165, 0.6)'; // Red-ish transparent
+        ctx.lineWidth = 8;
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+     }
+
+     // Draw the glowing dots (tips)
+     trail.forEach(p => {
+        const age = now - p.id;
+        const opacity = Math.max(0, 1 - age / 1500);
+        
+        ctx.beginPath();
+        ctx.fillStyle = `rgba(239, 68, 68, ${opacity})`; // Red-500
+        ctx.arc(p.x, p.y, 8, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.fillStyle = `rgba(255, 255, 255, ${opacity})`;
+        ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
+        ctx.fill();
+     });
+  };
 
   const drawGrid = (ctx: CanvasRenderingContext2D, w: number, h: number) => {
     const gridSize = 60; // Logical pixels
@@ -128,11 +202,7 @@ const WhiteboardCanvas = forwardRef<WhiteboardHandle, WhiteboardCanvasProps>(({
         case 'formula': writeFormula(ctx, cmd.payload); break;
         case 'highlight': drawHighlight(ctx, cmd.payload); break;
         case 'erase-area': eraseArea(ctx, cmd.payload); break;
-        case 'clear':
-           // We just clear the command list in state, but if a clear command exists in the stack:
-           // (Though usually we handle clear by emptying the array, this handles legacy/streamed clear commands)
-           // No op needed as we redraw frame from scratch
-           break;
+        case 'clear': break;
       }
   };
 
@@ -287,13 +357,8 @@ const WhiteboardCanvas = forwardRef<WhiteboardHandle, WhiteboardCanvasProps>(({
 
   const eraseArea = (ctx: CanvasRenderingContext2D, payload: EraseAreaPayload) => {
     const { x, y, width, height } = payload;
-    // We erase by drawing the background color over it
-    // In a layered system we would remove commands, but this works for a flat canvas
     ctx.fillStyle = '#1e293b'; 
     ctx.fillRect(x, y, width, height);
-    
-    // If grid is on, we might want to redraw grid lines here, but that's complex for a simple eraser.
-    // For now, the eraser erases the grid too (like a real whiteboard eraser).
   };
 
   const writeText = (ctx: CanvasRenderingContext2D, payload: WriteTextPayload) => {

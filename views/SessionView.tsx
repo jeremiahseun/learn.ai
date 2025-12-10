@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Mic, MicOff, BrainCircuit, Info, LayoutTemplate, Volume2, ArrowLeft, User, PenTool, Eraser, MousePointer2, ChevronRight, ChevronLeft, Play, Signal, Smartphone, RotateCw, Maximize2, Minimize2, Settings, X, ChevronDown, ChevronUp, Camera, Grid3X3 } from 'lucide-react';
+import { Mic, MicOff, BrainCircuit, Info, LayoutTemplate, Volume2, ArrowLeft, User, PenTool, Eraser, MousePointer2, ChevronRight, ChevronLeft, Play, Signal, Smartphone, RotateCw, Maximize2, Minimize2, Settings, X, ChevronDown, ChevronUp, Camera, Grid3X3, FastForward } from 'lucide-react';
 import WhiteboardCanvas, { WhiteboardHandle } from '../components/WhiteboardCanvas';
 import BoardCarousel from '../components/BoardCarousel';
 import ThinkingModal from '../components/ThinkingModal';
@@ -32,7 +32,9 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
   // User State
   const [userTool, setUserTool] = useState<UserTool>('pointer');
   const [isToolbarExpanded, setIsToolbarExpanded] = useState(false);
-  const [showGrid, setShowGrid] = useState(true); // Default grid ON
+  
+  // Laser Pointer State (Ephemeral)
+  const [currentLaserPoint, setCurrentLaserPoint] = useState<{x: number, y: number} | null>(null);
 
   // Audio Controls
   const [isMicMuted, setIsMicMuted] = useState(false);
@@ -168,7 +170,8 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
 
   const handleCreateBoard = () => {
      const newId = `board-${Date.now()}`;
-     setBoards(prev => [...prev, { id: newId, commands: [], lastSaved: Date.now() }]);
+     // New boards default to NO grid
+     setBoards(prev => [...prev, { id: newId, commands: [], lastSaved: Date.now(), gridActive: false }]);
      setActiveBoardId(newId);
   };
 
@@ -204,6 +207,22 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
     }));
   };
 
+  const handleNudge = () => {
+    if (liveClientRef.current) {
+       // Send a system message masquerading as user context or strict direction
+       liveClientRef.current.sendText("[SYSTEM]: The user is asking you to move on immediately. Stop the current explanation and advance to the next topic.");
+    }
+  };
+
+  const toggleGrid = () => {
+    setBoards(prev => prev.map(b => {
+      if (b.id === activeBoardId) {
+        return { ...b, gridActive: !b.gridActive };
+      }
+      return b;
+    }));
+  };
+
   const executeBoardCommand = async (name: string, args: any): Promise<any> => {
     const addCommand = (command: BoardCommand) => {
       setBoards(prev => prev.map(b => {
@@ -226,9 +245,27 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
     if (name === 'play_sound') { console.log(`Playing sound: ${args.sound}`); return "played sound"; }
     if (name === 'insert_image') { addCommand({ type: 'image', payload: args }); return "inserted image"; }
     if (name === 'clear_board') { addCommand({ type: 'clear' }); return "cleared"; }
+    
+    // Feature: Grid Toggle by AI
+    if (name === 'toggle_grid') {
+       const isVisible = args.visible;
+       setBoards(prev => prev.map(b => {
+         if (b.id === activeBoardIdRef.current) return { ...b, gridActive: isVisible };
+         return b;
+       }));
+       return `grid set to ${isVisible}`;
+    }
+
+    // Feature: Laser Pointer
+    if (name === 'laser_pointer') {
+       setCurrentLaserPoint({ x: args.x, y: args.y });
+       return "pointed";
+    }
+
     if (name === 'create_new_board') {
       const newId = `board-${Date.now()}`;
-      setBoards(prev => [...prev, { id: newId, commands: [], lastSaved: Date.now() }]);
+      // New boards have grid OFF by default as requested
+      setBoards(prev => [...prev, { id: newId, commands: [], lastSaved: Date.now(), gridActive: false }]);
       setActiveBoardId(newId); 
       activeBoardIdRef.current = newId; 
       console.log(`[SessionView] Created new board: ${newId}`);
@@ -341,12 +378,22 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
 
         <div className="flex items-center space-x-2 sm:space-x-4">
            {connectionState === ConnectionState.CONNECTED && (
-             <button
-                onClick={toggleMute}
-                className={`p-2.5 rounded-full transition-all border ${isMicMuted ? 'bg-red-500/10 text-red-400 border-red-500/30' : 'bg-white/5 text-slate-300 hover:text-white border-white/10 hover:bg-white/10'}`}
-             >
-               {isMicMuted ? <MicOff size={18} /> : <Mic size={18} />}
-             </button>
+             <>
+                <button
+                   onClick={handleNudge}
+                   title="Nudge: Tell AI to move on"
+                   className="p-2.5 rounded-full bg-white/5 text-yellow-400 hover:bg-yellow-500/10 border border-yellow-500/30 transition-all hover:shadow-[0_0_10px_rgba(250,204,21,0.2)]"
+                >
+                   <FastForward size={18} />
+                </button>
+
+                <button
+                    onClick={toggleMute}
+                    className={`p-2.5 rounded-full transition-all border ${isMicMuted ? 'bg-red-500/10 text-red-400 border-red-500/30' : 'bg-white/5 text-slate-300 hover:text-white border-white/10 hover:bg-white/10'}`}
+                >
+                   {isMicMuted ? <MicOff size={18} /> : <Mic size={18} />}
+                </button>
+             </>
            )}
 
            <NetworkStatus state={connectionState === ConnectionState.ERROR && retryCount > 0 ? ConnectionState.CONNECTING : connectionState} />
@@ -397,7 +444,8 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
                 height={boardDims.height} 
                 userTool={userTool}
                 onUserDraw={handleUserDraw}
-                showGrid={showGrid}
+                showGrid={getActiveBoard().gridActive ?? false} // Defaults to false
+                laserPoint={currentLaserPoint}
               />
 
               {/* Persistent Manual Toolbar Overlay */}
@@ -449,11 +497,11 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
                     <div className="h-px bg-white/10 my-1"></div>
 
                     <button 
-                      onClick={() => { setShowGrid(!showGrid); }} 
-                      className={`flex items-center gap-3 p-2.5 rounded-lg w-36 transition-colors ${showGrid ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30' : 'text-slate-400 hover:bg-white/10 hover:text-white'}`}
+                      onClick={toggleGrid} 
+                      className={`flex items-center gap-3 p-2.5 rounded-lg w-36 transition-colors ${getActiveBoard().gridActive ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30' : 'text-slate-400 hover:bg-white/10 hover:text-white'}`}
                     >
                        <Grid3X3 size={18} />
-                       <span className="text-sm font-medium">Grid</span>
+                       <span className="text-sm font-medium">Grid {getActiveBoard().gridActive ? 'On' : 'Off'}</span>
                     </button>
 
                     <button 
