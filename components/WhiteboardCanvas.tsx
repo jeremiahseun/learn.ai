@@ -18,16 +18,16 @@ import {
 
 interface WhiteboardCanvasProps {
   commands: BoardCommand[];
-  width?: number;
-  height?: number;
+  width?: number; // Logical width, defaults to 1920
+  height?: number; // Logical height, defaults to 1080
   userTool: UserTool;
   onUserDraw: (command: BoardCommand) => void;
 }
 
 const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = ({ 
   commands, 
-  width = 1000, 
-  height = 1000,
+  width = 1920, 
+  height = 1080,
   userTool,
   onUserDraw
 }) => {
@@ -43,15 +43,15 @@ const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = ({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Handle High DPI
-    const dpr = window.devicePixelRatio || 1;
-    // Set internal resolution
-    canvas.width = width * dpr;
-    canvas.height = height * dpr;
+    // We do not rely on window.devicePixelRatio for scaling logic here 
+    // because we are treating the canvas like a video frame.
+    // However, for sharpness, we can double the internal resolution if needed, 
+    // but sticking to 1:1 logical mapping is safest for the AI coordinate system.
     
-    // Scale drawing context so we can draw in 0-1000 units
-    ctx.scale(dpr, dpr);
-
+    // Set internal resolution (The Source of Truth)
+    canvas.width = width;
+    canvas.height = height;
+    
     // Initial background
     ctx.fillStyle = '#1e293b'; // Slate-800
     ctx.fillRect(0, 0, width, height);
@@ -65,7 +65,7 @@ const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = ({
     // Render current user stroke (active drawing)
     if (currentStroke.length > 0 && userTool === 'pen') {
       ctx.globalAlpha = 1.0;
-      drawStroke(ctx, { points: currentStroke, color: '#4ADE80', width: 3 }); // Student draws in Green
+      drawStroke(ctx, { points: currentStroke, color: '#4ADE80', width: 4 }); // Student draws in Green, slightly thicker for HD
     }
 
   }, [commands, width, height, currentStroke, userTool]);
@@ -99,45 +99,15 @@ const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = ({
     const clientX = 'touches' in e ? e.touches[0].clientX : (e as React.MouseEvent).clientX;
     const clientY = 'touches' in e ? e.touches[0].clientY : (e as React.MouseEvent).clientY;
     
-    // Internal resolution (coordinate system)
-    const internalW = width;
-    const internalH = height;
+    // Map Rendered Size (CSS) -> Logical Size (1920x1080)
+    // The CSS aspect-ratio ensures the canvas element itself is always 16:9 
+    // and fully filled by the internal resolution.
     
-    // Rendered box size (element size in CSS pixels)
-    const rectW = rect.width;
-    const rectH = rect.height;
+    const scaleX = width / rect.width;
+    const scaleY = height / rect.height;
     
-    // Calculate aspect ratios
-    const internalRatio = internalW / internalH;
-    const rectRatio = rectW / rectH;
-    
-    let renderW, renderH, offsetX, offsetY;
-    
-    // Determine the actual size of the drawn content within the element
-    // This logic mimics 'object-fit: contain'
-    if (rectRatio > internalRatio) {
-      // Container is wider than content (Letterbox on sides)
-      renderH = rectH;
-      renderW = rectH * internalRatio;
-      offsetX = (rectW - renderW) / 2;
-      offsetY = 0;
-    } else {
-      // Container is taller than content (Letterbox on top/bottom)
-      renderW = rectW;
-      renderH = rectW / internalRatio;
-      offsetX = 0;
-      offsetY = (rectH - renderH) / 2;
-    }
-    
-    // Coordinates relative to the canvas element top-left
-    const relX = clientX - rect.left;
-    const relY = clientY - rect.top;
-    
-    // Map relative coordinates to internal coordinate system
-    // (relX - offsetX) shifts the origin to the start of the content
-    // (internalW / renderW) scales the pixels to internal units
-    const x = (relX - offsetX) * (internalW / renderW);
-    const y = (relY - offsetY) * (internalH / renderH);
+    const x = (clientX - rect.left) * scaleX;
+    const y = (clientY - rect.top) * scaleY;
     
     return { x, y };
   };
@@ -161,7 +131,7 @@ const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = ({
     } else if (userTool === 'eraser') {
        onUserDraw({
          type: 'erase-area',
-         payload: { x: pt.x - 25, y: pt.y - 25, width: 50, height: 50 }
+         payload: { x: pt.x - 30, y: pt.y - 30, width: 60, height: 60 } // Larger eraser for HD
        });
     }
   };
@@ -173,7 +143,7 @@ const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = ({
     if (userTool === 'pen' && currentStroke.length > 1) {
       onUserDraw({
         type: 'stroke',
-        payload: { points: currentStroke, color: '#4ADE80', width: 3 }
+        payload: { points: currentStroke, color: '#4ADE80', width: 4 }
       });
     }
     setCurrentStroke([]);
@@ -182,7 +152,7 @@ const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = ({
   // --- Drawing Primitives (Shared) ---
 
   const drawStroke = (ctx: CanvasRenderingContext2D, payload: DrawStrokePayload) => {
-    const { points, color, width = 2 } = payload;
+    const { points, color, width = 3 } = payload;
     if (points.length < 2) return;
 
     ctx.beginPath();
@@ -199,7 +169,7 @@ const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = ({
   };
 
   const drawLine = (ctx: CanvasRenderingContext2D, payload: DrawLinePayload) => {
-    const { x1, y1, x2, y2, color, width = 2 } = payload;
+    const { x1, y1, x2, y2, color, width = 3 } = payload;
     ctx.beginPath();
     ctx.strokeStyle = color;
     ctx.lineWidth = width;
@@ -209,8 +179,8 @@ const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = ({
   };
 
   const drawArrow = (ctx: CanvasRenderingContext2D, payload: DrawArrowPayload) => {
-    const { x1, y1, x2, y2, color, width = 2 } = payload;
-    const headLength = 15;
+    const { x1, y1, x2, y2, color, width = 3 } = payload;
+    const headLength = 20;
     const angle = Math.atan2(y2 - y1, x2 - x1);
 
     ctx.beginPath();
@@ -233,7 +203,7 @@ const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = ({
     const { x, y, radius, color } = payload;
     ctx.beginPath();
     ctx.strokeStyle = color;
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 3;
     ctx.arc(x, y, radius, 0, 2 * Math.PI);
     ctx.stroke();
   };
@@ -241,7 +211,7 @@ const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = ({
   const drawRect = (ctx: CanvasRenderingContext2D, payload: DrawRectPayload) => {
     const { x, y, width, height, color } = payload;
     ctx.strokeStyle = color;
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 3;
     ctx.strokeRect(x, y, width, height);
   };
 
@@ -260,7 +230,7 @@ const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = ({
       ctx.fill();
     }
     ctx.strokeStyle = color;
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 3;
     ctx.stroke();
   };
 
@@ -279,14 +249,14 @@ const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = ({
   };
 
   const writeText = (ctx: CanvasRenderingContext2D, payload: WriteTextPayload) => {
-    const { text, x, y, color = '#ffffff', size = 18, align = 'left' } = payload;
+    const { text, x, y, color = '#ffffff', size = 24, align = 'left' } = payload;
     ctx.font = `${size}px sans-serif`;
     ctx.textBaseline = 'top'; 
     ctx.textAlign = align as CanvasTextAlign;
     
     // Stroke (Outline)
     ctx.strokeStyle = '#0f172a'; // Dark slate stroke
-    ctx.lineWidth = 4;
+    ctx.lineWidth = 5;
     ctx.strokeText(text, x, y);
 
     // Fill
@@ -295,13 +265,13 @@ const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = ({
   };
 
   const writeFormula = (ctx: CanvasRenderingContext2D, payload: InsertMathFormulaPayload) => {
-     const { expression, x, y, color = '#fbbf24', size = 28 } = payload;
+     const { expression, x, y, color = '#fbbf24', size = 36 } = payload;
      ctx.font = `italic ${size}px serif`;
      ctx.textBaseline = 'top';
      
      // Stroke
      ctx.strokeStyle = '#0f172a';
-     ctx.lineWidth = 4;
+     ctx.lineWidth = 5;
      ctx.strokeText(expression, x, y);
 
      // Fill
@@ -312,7 +282,9 @@ const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = ({
   return (
     <canvas 
       ref={canvasRef} 
-      className={`w-full h-full object-contain bg-slate-800 rounded-lg shadow-inner border border-slate-700 
+      // Tailwind: w-full h-full ensures it fills the container.
+      // object-contain is not needed here because parent container handles aspect ratio.
+      className={`w-full h-full bg-slate-800 rounded-lg shadow-inner border border-slate-700 
         ${userTool !== 'pointer' ? 'cursor-crosshair touch-none' : 'cursor-default'}`}
       onMouseDown={handleStart}
       onMouseMove={handleMove}

@@ -1,6 +1,6 @@
 
-import React, { useState, useEffect, useRef, useLayoutEffect } from 'react';
-import { Mic, MicOff, BrainCircuit, Info, LayoutTemplate, Volume2, ArrowLeft, User, PenTool, Eraser, MousePointer2, ChevronRight, ChevronLeft, Play, Signal, Smartphone, RotateCw } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Mic, MicOff, BrainCircuit, Info, LayoutTemplate, Volume2, ArrowLeft, User, PenTool, Eraser, MousePointer2, ChevronRight, ChevronLeft, Play, Signal, Smartphone, RotateCw, Maximize2, Minimize2, Settings, X, ChevronDown, ChevronUp } from 'lucide-react';
 import WhiteboardCanvas from '../components/WhiteboardCanvas';
 import BoardCarousel from '../components/BoardCarousel';
 import ThinkingModal from '../components/ThinkingModal';
@@ -31,18 +31,20 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
   
   // User State
   const [userTool, setUserTool] = useState<UserTool>('pointer');
-  const [isToolbarOpen, setIsToolbarOpen] = useState(false);
-  const toolbarTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  // Manual toggle for toolbar, defaults to collapsed (false)
+  const [isToolbarExpanded, setIsToolbarExpanded] = useState(false);
 
   // Audio Controls
   const [isMicMuted, setIsMicMuted] = useState(false);
   const [audioLevels, setAudioLevels] = useState({ input: 0, output: 0 });
   const [retryCount, setRetryCount] = useState(0);
   
-  // Board Dimensions
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [boardDims, setBoardDims] = useState({ width: 1000, height: 1000 });
-  const [isPortraitMobile, setIsPortraitMobile] = useState(false);
+  // Video Player Logic
+  const playerContainerRef = useRef<HTMLDivElement>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  // We hardcode dimensions to 1920x1080 (HD Video Standard)
+  const boardDims = { width: 1920, height: 1080 };
 
   const liveClientRef = useRef<GeminiLiveClient | null>(null);
   const activeBoardIdRef = useRef(activeBoardId);
@@ -55,39 +57,13 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
   useEffect(() => { boardsRef.current = boards; }, [boards]);
   useEffect(() => { sessionTitleRef.current = sessionTitle; }, [sessionTitle]);
 
-  // Dimension & Orientation Logic
-  useLayoutEffect(() => {
-    const updateDimensions = () => {
-      // Check for mobile portrait
-      if (window.innerWidth < window.innerHeight && window.innerWidth < 700) {
-        setIsPortraitMobile(true);
-        return;
-      } else {
-        setIsPortraitMobile(false);
-      }
-
-      if (containerRef.current) {
-        const { clientWidth, clientHeight } = containerRef.current;
-        // Fix logical width to 1000. Calculate logical height based on aspect ratio.
-        // AR = W / H.  1000 / h = W / H  => h = 1000 * H / W
-        const ratio = clientHeight / clientWidth;
-        const logicalHeight = Math.round(1000 * ratio);
-        
-        setBoardDims({
-          width: 1000,
-          height: logicalHeight
-        });
-        console.log(`[SessionView] Board Dims Updated: 1000x${logicalHeight} (Screen: ${clientWidth}x${clientHeight})`);
-      }
+  // Handle Fullscreen Change Events
+  useEffect(() => {
+    const handleFsChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
     };
-
-    window.addEventListener('resize', updateDimensions);
-    updateDimensions();
-    
-    // Give it a moment for layout to settle
-    setTimeout(updateDimensions, 100);
-
-    return () => window.removeEventListener('resize', updateDimensions);
+    document.addEventListener('fullscreenchange', handleFsChange);
+    return () => document.removeEventListener('fullscreenchange', handleFsChange);
   }, []);
 
   // Auto-save on unmount or change
@@ -118,25 +94,31 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
     }
   }, [connectionState, retryCount]);
 
-  // Toolbar Auto-Hide Logic
-  useEffect(() => {
-    if (isToolbarOpen) {
-      if (toolbarTimeoutRef.current) clearTimeout(toolbarTimeoutRef.current);
-      toolbarTimeoutRef.current = setTimeout(() => {
-        setIsToolbarOpen(false);
-      }, 3000); // Hide after 3 seconds of no interaction
-    }
-    return () => {
-      if (toolbarTimeoutRef.current) clearTimeout(toolbarTimeoutRef.current);
-    };
-  }, [isToolbarOpen, userTool]);
+  const toggleFullscreen = async () => {
+    if (!playerContainerRef.current) return;
 
-  const interactToolbar = () => {
-    setIsToolbarOpen(true);
-    if (toolbarTimeoutRef.current) clearTimeout(toolbarTimeoutRef.current);
-    toolbarTimeoutRef.current = setTimeout(() => {
-      setIsToolbarOpen(false);
-    }, 3000);
+    if (!document.fullscreenElement) {
+      try {
+        await playerContainerRef.current.requestFullscreen();
+        // Attempt to lock orientation to landscape on mobile
+        if (screen.orientation && (screen.orientation as any).lock) {
+          try {
+             await (screen.orientation as any).lock('landscape');
+          } catch(e) {
+             console.log("Orientation lock not supported or denied");
+          }
+        }
+      } catch (err) {
+        console.error("Error enabling fullscreen:", err);
+      }
+    } else {
+      if (document.exitFullscreen) {
+        document.exitFullscreen();
+        if (screen.orientation && (screen.orientation as any).unlock) {
+           (screen.orientation as any).unlock();
+        }
+      }
+    }
   };
 
   const saveSessionState = () => {
@@ -204,7 +186,6 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
   };
 
   const handleUserDraw = (command: BoardCommand) => {
-    interactToolbar();
     setBoards(prev => prev.map(b => {
       if (b.id === activeBoardId) {
         return { ...b, commands: [...b.commands, command], lastSaved: Date.now() };
@@ -214,8 +195,6 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
   };
 
   const executeBoardCommand = async (name: string, args: any): Promise<any> => {
-    // console.log(`Executing tool: ${name} on board ${activeBoardIdRef.current}`);
-    
     // Helper to add command to CURRENT active board
     const addCommand = (command: BoardCommand) => {
       setBoards(prev => prev.map(b => {
@@ -237,16 +216,13 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
     if (name === 'write_text') { addCommand({ type: 'text', payload: args }); return "written text"; }
     if (name === 'write_formula') { addCommand({ type: 'formula', payload: args }); return "written formula"; }
     if (name === 'play_sound') { 
-        // Mock sound player
         console.log(`Playing sound: ${args.sound}`); 
-        // In future: new Audio(`/sounds/${args.sound}.mp3`).play();
         return "played sound"; 
     }
     if (name === 'insert_image') { addCommand({ type: 'image', payload: args }); return "inserted image"; }
     if (name === 'clear_board') { addCommand({ type: 'clear' }); return "cleared"; }
     if (name === 'create_new_board') {
       const newId = `board-${Date.now()}`;
-      // CRITICAL: Update state AND ref synchronously for next iteration
       setBoards(prev => [...prev, { id: newId, commands: [], lastSaved: Date.now() }]);
       setActiveBoardId(newId); 
       activeBoardIdRef.current = newId; 
@@ -272,7 +248,6 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
   const connectSession = async (isReconnect: boolean = false) => {
     console.log(`[SessionView] Toggling connection... (isReconnect: ${isReconnect})`);
     
-    // If disconnecting manual click
     if (!isReconnect && (connectionState === ConnectionState.CONNECTED || connectionState === ConnectionState.CONNECTING)) {
       console.log("[SessionView] Disconnecting...");
       liveClientRef.current?.disconnect();
@@ -287,7 +262,6 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
     }
 
     setConnectionState(ConnectionState.CONNECTING);
-    // Only clear error message if we aren't in a retry loop (to keep UI clean or show retry status)
     if (!isReconnect) setErrorMsg(null);
     if (!isReconnect) setIsMicMuted(false);
 
@@ -306,7 +280,6 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
           onError: (err) => {
             console.error("[SessionView] Connection error callback", err);
             
-            // IGNORE generic "Internal error" if we are in a retry-able state
             if (err.message.includes("Internal error") && retryCount < 3) {
                console.log("[SessionView] Suppressing internal error for auto-reconnect");
                setConnectionState(ConnectionState.ERROR); 
@@ -318,7 +291,7 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
           }
         }, 
         user,
-        boardDims, // Pass calculated dimensions
+        boardDims, // Pass fixed HD dimensions
         { 
             topic: session.topic, 
             pdfBase64: session.pdfContext,
@@ -340,17 +313,6 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
       }
     }
   };
-
-  // Orientation Blocker
-  if (isPortraitMobile) {
-    return (
-      <div className="fixed inset-0 bg-slate-900 z-50 flex flex-col items-center justify-center p-8 text-center">
-         <RotateCw size={48} className="text-cyan-400 animate-spin-slow mb-6" />
-         <h2 className="text-2xl font-bold text-white mb-2">Please Rotate Your Device</h2>
-         <p className="text-slate-400">For the best whiteboard experience, please use landscape mode.</p>
-      </div>
-    );
-  }
 
   return (
     <div className="flex flex-col h-screen bg-[#020617] text-slate-100 font-sans overflow-hidden">
@@ -432,14 +394,15 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
         </div>
       </header>
 
-      {/* Main Content */}
-      <main className="flex-1 relative overflow-hidden flex flex-col" onMouseMove={interactToolbar} onTouchStart={interactToolbar}>
-        <div className="flex-1 relative flex items-center justify-center p-2 sm:p-6 lg:p-8">
-           {/* Canvas Container with Glass Border */}
+      {/* Main Content - The "Video Player" Stage */}
+      <main className="flex-1 relative bg-black flex flex-col items-center justify-center p-4 overflow-hidden">
+           
+           {/* Player Wrapper: Centered, max size, aspect-video (16:9) */}
            <div 
-             ref={containerRef}
-             className="relative w-full h-full max-w-[1400px] rounded-2xl overflow-hidden glass-panel border border-white/10 shadow-2xl"
+             ref={playerContainerRef}
+             className="relative w-full max-w-[177vh] aspect-video bg-slate-900 rounded-xl overflow-hidden shadow-2xl border border-slate-800"
            >
+              {/* The Actual Canvas (Fixed 1920x1080 internal) */}
               <WhiteboardCanvas 
                 commands={getActiveBoard().commands} 
                 width={boardDims.width} 
@@ -448,32 +411,67 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
                 onUserDraw={handleUserDraw}
               />
 
-              {/* Floating Toolbar (Glass) */}
-              <div 
-                className={`
-                  absolute top-4 left-4 flex flex-col space-y-2 bg-black/60 backdrop-blur-xl p-2 rounded-xl border border-white/10 shadow-xl transition-all duration-300
-                  ${isToolbarOpen ? 'translate-x-0 opacity-100' : '-translate-x-full opacity-0 pointer-events-none sm:translate-x-0 sm:opacity-100 sm:pointer-events-auto'}
-                `}
-              >
-                 <button onClick={() => { setUserTool('pointer'); interactToolbar(); }} className={`p-2.5 rounded-lg hover:bg-white/10 transition ${userTool === 'pointer' ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/50' : 'text-slate-400'}`} title="Pointer"><MousePointer2 size={20} /></button>
-                 <button onClick={() => { setUserTool('pen'); interactToolbar(); }} className={`p-2.5 rounded-lg hover:bg-white/10 transition ${userTool === 'pen' ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/50' : 'text-slate-400'}`} title="Draw"><PenTool size={20} /></button>
-                 <button onClick={() => { setUserTool('eraser'); interactToolbar(); }} className={`p-2.5 rounded-lg hover:bg-white/10 transition ${userTool === 'eraser' ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/50' : 'text-slate-400'}`} title="Eraser"><Eraser size={20} /></button>
+              {/* Persistent Manual Toolbar Overlay */}
+              <div className="absolute top-6 left-6 z-50 flex flex-col items-start gap-2">
+                 
+                 {/* Toggle Button */}
+                 <button
+                    onClick={() => setIsToolbarExpanded(!isToolbarExpanded)}
+                    className={`
+                      flex items-center justify-center p-3 rounded-xl backdrop-blur-md border shadow-lg transition-all
+                      ${isToolbarExpanded 
+                         ? 'bg-cyan-500 text-black border-cyan-400 shadow-[0_0_15px_rgba(34,211,238,0.3)]' 
+                         : 'bg-black/60 text-slate-300 border-white/10 hover:bg-white/10'}
+                    `}
+                    title="Drawing Tools"
+                 >
+                    {isToolbarExpanded ? <X size={20} /> : <PenTool size={20} />}
+                 </button>
+
+                 {/* Expanded Tools List */}
+                 <div className={`
+                    flex flex-col gap-2 p-2 bg-black/80 backdrop-blur-xl rounded-xl border border-white/10 shadow-2xl transition-all origin-top-left overflow-hidden
+                    ${isToolbarExpanded ? 'opacity-100 scale-100' : 'opacity-0 scale-95 pointer-events-none h-0 p-0 border-0'}
+                 `}>
+                    <button 
+                      onClick={() => { setUserTool('pointer'); setIsToolbarExpanded(false); }} 
+                      className={`flex items-center gap-3 p-2.5 rounded-lg w-32 transition-colors ${userTool === 'pointer' ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30' : 'text-slate-400 hover:bg-white/10 hover:text-white'}`}
+                    >
+                       <MousePointer2 size={18} />
+                       <span className="text-sm font-medium">Pointer</span>
+                    </button>
+
+                    <button 
+                      onClick={() => { setUserTool('pen'); setIsToolbarExpanded(false); }} 
+                      className={`flex items-center gap-3 p-2.5 rounded-lg w-32 transition-colors ${userTool === 'pen' ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30' : 'text-slate-400 hover:bg-white/10 hover:text-white'}`}
+                    >
+                       <PenTool size={18} />
+                       <span className="text-sm font-medium">Draw</span>
+                    </button>
+
+                    <button 
+                      onClick={() => { setUserTool('eraser'); setIsToolbarExpanded(false); }} 
+                      className={`flex items-center gap-3 p-2.5 rounded-lg w-32 transition-colors ${userTool === 'eraser' ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30' : 'text-slate-400 hover:bg-white/10 hover:text-white'}`}
+                    >
+                       <Eraser size={18} />
+                       <span className="text-sm font-medium">Eraser</span>
+                    </button>
+                 </div>
               </div>
 
-              {/* Mobile Toolbar Toggle */}
-              <div 
-                onClick={interactToolbar}
-                className={`
-                  absolute top-4 left-0 bg-black/60 backdrop-blur p-2 rounded-r-lg border-y border-r border-white/10 text-cyan-400 cursor-pointer sm:hidden transition-all duration-300
-                  ${isToolbarOpen ? '-translate-x-full' : 'translate-x-0'}
-                `}
-              >
-                <ChevronRight size={20} />
+              {/* Fullscreen Button */}
+              <div className="absolute bottom-6 right-6 z-20 opacity-0 group-hover:opacity-100 sm:opacity-100 transition-opacity">
+                 <button 
+                   onClick={toggleFullscreen}
+                   className="p-3 bg-black/60 backdrop-blur-md rounded-full text-slate-300 hover:text-white hover:bg-white/10 border border-white/10 transition-all"
+                 >
+                   {isFullscreen ? <Minimize2 size={24} /> : <Maximize2 size={24} />}
+                 </button>
               </div>
               
               {/* Start Overlay (Ready State) */}
               {showStartOverlay && connectionState === ConnectionState.DISCONNECTED && (
-                <div className="absolute inset-0 z-40 bg-black/60 backdrop-blur-md flex items-center justify-center p-6">
+                <div className="absolute inset-0 z-40 bg-black/80 backdrop-blur-sm flex items-center justify-center p-6">
                     <div className="relative text-center max-w-lg w-full">
                        <div className="absolute inset-0 bg-cyan-500/20 blur-[100px] rounded-full animate-pulse-glow"></div>
                        <div className="relative z-10 flex flex-col items-center">
@@ -491,8 +489,8 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
                 </div>
               )}
            </div>
-        </div>
-        {errorMsg && <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-red-500/90 text-white px-6 py-3 rounded-xl shadow-lg border border-red-500/50 text-sm z-50 animate-bounce font-medium">{errorMsg}</div>}
+
+           {errorMsg && <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-red-500/90 text-white px-6 py-3 rounded-xl shadow-lg border border-red-500/50 text-sm z-50 animate-bounce font-medium">{errorMsg}</div>}
       </main>
 
       <footer className="flex-none z-10 bg-[#020617]/80 backdrop-blur-xl border-t border-white/5">
