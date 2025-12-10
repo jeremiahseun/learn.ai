@@ -1,5 +1,5 @@
 
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useState, useImperativeHandle, forwardRef } from 'react';
 import { 
   BoardCommand, 
   DrawStrokePayload, 
@@ -16,24 +16,39 @@ import {
   Point
 } from '../types';
 
+export interface WhiteboardHandle {
+  exportImage: () => string; // Returns data URL
+}
+
 interface WhiteboardCanvasProps {
   commands: BoardCommand[];
   width?: number; // Logical width, defaults to 1920
   height?: number; // Logical height, defaults to 1080
   userTool: UserTool;
   onUserDraw: (command: BoardCommand) => void;
+  showGrid?: boolean;
 }
 
-const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = ({ 
+const WhiteboardCanvas = forwardRef<WhiteboardHandle, WhiteboardCanvasProps>(({ 
   commands, 
   width = 1920, 
   height = 1080,
   userTool,
-  onUserDraw
-}) => {
+  onUserDraw,
+  showGrid = true
+}, ref) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [currentStroke, setCurrentStroke] = useState<Point[]>([]);
+
+  // Expose methods to parent
+  useImperativeHandle(ref, () => ({
+    exportImage: () => {
+      const canvas = canvasRef.current;
+      if (!canvas) return '';
+      return canvas.toDataURL('image/png');
+    }
+  }));
 
   // Render logic
   useEffect(() => {
@@ -43,32 +58,63 @@ const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = ({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // We do not rely on window.devicePixelRatio for scaling logic here 
-    // because we are treating the canvas like a video frame.
-    // However, for sharpness, we can double the internal resolution if needed, 
-    // but sticking to 1:1 logical mapping is safest for the AI coordinate system.
-    
     // Set internal resolution (The Source of Truth)
     canvas.width = width;
     canvas.height = height;
     
-    // Initial background
+    // 1. Fill Background
     ctx.fillStyle = '#1e293b'; // Slate-800
     ctx.fillRect(0, 0, width, height);
 
-    // Render all confirmed commands
+    // 2. Draw Grid (if enabled)
+    if (showGrid) {
+      drawGrid(ctx, width, height);
+    }
+
+    // 3. Render all confirmed commands
     commands.forEach(cmd => {
       ctx.globalAlpha = 1.0; 
       renderCommand(ctx, cmd);
     });
 
-    // Render current user stroke (active drawing)
+    // 4. Render current user stroke (active drawing)
     if (currentStroke.length > 0 && userTool === 'pen') {
       ctx.globalAlpha = 1.0;
-      drawStroke(ctx, { points: currentStroke, color: '#4ADE80', width: 4 }); // Student draws in Green, slightly thicker for HD
+      drawStroke(ctx, { points: currentStroke, color: '#4ADE80', width: 4 }); // Student draws in Green
     }
 
-  }, [commands, width, height, currentStroke, userTool]);
+  }, [commands, width, height, currentStroke, userTool, showGrid]);
+
+  const drawGrid = (ctx: CanvasRenderingContext2D, w: number, h: number) => {
+    const gridSize = 60; // Logical pixels
+    ctx.beginPath();
+    ctx.strokeStyle = '#334155'; // Slate-700
+    ctx.lineWidth = 1;
+
+    // Vertical lines
+    for (let x = 0; x <= w; x += gridSize) {
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, h);
+    }
+
+    // Horizontal lines
+    for (let y = 0; y <= h; y += gridSize) {
+      ctx.moveTo(0, y);
+      ctx.lineTo(w, y);
+    }
+    
+    ctx.stroke();
+
+    // Center Crosshair
+    ctx.beginPath();
+    ctx.strokeStyle = '#475569'; // Slightly brighter
+    ctx.lineWidth = 2;
+    ctx.moveTo(w/2, 0);
+    ctx.lineTo(w/2, h);
+    ctx.moveTo(0, h/2);
+    ctx.lineTo(w, h/2);
+    ctx.stroke();
+  };
 
   const renderCommand = (ctx: CanvasRenderingContext2D, cmd: BoardCommand) => {
       switch (cmd.type) {
@@ -83,8 +129,9 @@ const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = ({
         case 'highlight': drawHighlight(ctx, cmd.payload); break;
         case 'erase-area': eraseArea(ctx, cmd.payload); break;
         case 'clear':
-           ctx.fillStyle = '#1e293b';
-           ctx.fillRect(0, 0, width, height);
+           // We just clear the command list in state, but if a clear command exists in the stack:
+           // (Though usually we handle clear by emptying the array, this handles legacy/streamed clear commands)
+           // No op needed as we redraw frame from scratch
            break;
       }
   };
@@ -98,10 +145,6 @@ const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = ({
     const rect = canvas.getBoundingClientRect();
     const clientX = 'touches' in e ? e.touches[0].clientX : (e as React.MouseEvent).clientX;
     const clientY = 'touches' in e ? e.touches[0].clientY : (e as React.MouseEvent).clientY;
-    
-    // Map Rendered Size (CSS) -> Logical Size (1920x1080)
-    // The CSS aspect-ratio ensures the canvas element itself is always 16:9 
-    // and fully filled by the internal resolution.
     
     const scaleX = width / rect.width;
     const scaleY = height / rect.height;
@@ -131,7 +174,7 @@ const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = ({
     } else if (userTool === 'eraser') {
        onUserDraw({
          type: 'erase-area',
-         payload: { x: pt.x - 30, y: pt.y - 30, width: 60, height: 60 } // Larger eraser for HD
+         payload: { x: pt.x - 30, y: pt.y - 30, width: 60, height: 60 }
        });
     }
   };
@@ -149,7 +192,7 @@ const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = ({
     setCurrentStroke([]);
   };
 
-  // --- Drawing Primitives (Shared) ---
+  // --- Drawing Primitives ---
 
   const drawStroke = (ctx: CanvasRenderingContext2D, payload: DrawStrokePayload) => {
     const { points, color, width = 3 } = payload;
@@ -244,8 +287,13 @@ const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = ({
 
   const eraseArea = (ctx: CanvasRenderingContext2D, payload: EraseAreaPayload) => {
     const { x, y, width, height } = payload;
+    // We erase by drawing the background color over it
+    // In a layered system we would remove commands, but this works for a flat canvas
     ctx.fillStyle = '#1e293b'; 
     ctx.fillRect(x, y, width, height);
+    
+    // If grid is on, we might want to redraw grid lines here, but that's complex for a simple eraser.
+    // For now, the eraser erases the grid too (like a real whiteboard eraser).
   };
 
   const writeText = (ctx: CanvasRenderingContext2D, payload: WriteTextPayload) => {
@@ -254,12 +302,10 @@ const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = ({
     ctx.textBaseline = 'top'; 
     ctx.textAlign = align as CanvasTextAlign;
     
-    // Stroke (Outline)
-    ctx.strokeStyle = '#0f172a'; // Dark slate stroke
+    ctx.strokeStyle = '#0f172a';
     ctx.lineWidth = 5;
     ctx.strokeText(text, x, y);
 
-    // Fill
     ctx.fillStyle = color;
     ctx.fillText(text, x, y);
   };
@@ -269,12 +315,10 @@ const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = ({
      ctx.font = `italic ${size}px serif`;
      ctx.textBaseline = 'top';
      
-     // Stroke
      ctx.strokeStyle = '#0f172a';
      ctx.lineWidth = 5;
      ctx.strokeText(expression, x, y);
 
-     // Fill
      ctx.fillStyle = color;
      ctx.fillText(expression, x, y);
   };
@@ -282,8 +326,6 @@ const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = ({
   return (
     <canvas 
       ref={canvasRef} 
-      // Tailwind: w-full h-full ensures it fills the container.
-      // object-contain is not needed here because parent container handles aspect ratio.
       className={`w-full h-full bg-slate-800 rounded-lg shadow-inner border border-slate-700 
         ${userTool !== 'pointer' ? 'cursor-crosshair touch-none' : 'cursor-default'}`}
       onMouseDown={handleStart}
@@ -295,6 +337,6 @@ const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = ({
       onTouchEnd={handleEnd}
     />
   );
-};
+});
 
 export default WhiteboardCanvas;

@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Mic, MicOff, BrainCircuit, Info, LayoutTemplate, Volume2, ArrowLeft, User, PenTool, Eraser, MousePointer2, ChevronRight, ChevronLeft, Play, Signal, Smartphone, RotateCw, Maximize2, Minimize2, Settings, X, ChevronDown, ChevronUp } from 'lucide-react';
-import WhiteboardCanvas from '../components/WhiteboardCanvas';
+import { Mic, MicOff, BrainCircuit, Info, LayoutTemplate, Volume2, ArrowLeft, User, PenTool, Eraser, MousePointer2, ChevronRight, ChevronLeft, Play, Signal, Smartphone, RotateCw, Maximize2, Minimize2, Settings, X, ChevronDown, ChevronUp, Camera, Grid3X3 } from 'lucide-react';
+import WhiteboardCanvas, { WhiteboardHandle } from '../components/WhiteboardCanvas';
 import BoardCarousel from '../components/BoardCarousel';
 import ThinkingModal from '../components/ThinkingModal';
 import AudioPulse from '../components/AudioPulse';
@@ -31,8 +31,8 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
   
   // User State
   const [userTool, setUserTool] = useState<UserTool>('pointer');
-  // Manual toggle for toolbar, defaults to collapsed (false)
   const [isToolbarExpanded, setIsToolbarExpanded] = useState(false);
+  const [showGrid, setShowGrid] = useState(true); // Default grid ON
 
   // Audio Controls
   const [isMicMuted, setIsMicMuted] = useState(false);
@@ -41,6 +41,7 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
   
   // Video Player Logic
   const playerContainerRef = useRef<HTMLDivElement>(null);
+  const canvasRef = useRef<WhiteboardHandle>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   // We hardcode dimensions to 1920x1080 (HD Video Standard)
@@ -100,7 +101,6 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
     if (!document.fullscreenElement) {
       try {
         await playerContainerRef.current.requestFullscreen();
-        // Attempt to lock orientation to landscape on mobile
         if (screen.orientation && (screen.orientation as any).lock) {
           try {
              await (screen.orientation as any).lock('landscape');
@@ -118,6 +118,16 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
            (screen.orientation as any).unlock();
         }
       }
+    }
+  };
+
+  const handleDownloadSnapshot = () => {
+    if (canvasRef.current) {
+      const dataUrl = canvasRef.current.exportImage();
+      const link = document.createElement('a');
+      link.download = `${sessionTitle.replace(/\s+/g, '_')}_board_${activeBoardId}.png`;
+      link.href = dataUrl;
+      link.click();
     }
   };
 
@@ -195,7 +205,6 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
   };
 
   const executeBoardCommand = async (name: string, args: any): Promise<any> => {
-    // Helper to add command to CURRENT active board
     const addCommand = (command: BoardCommand) => {
       setBoards(prev => prev.map(b => {
         if (b.id === activeBoardIdRef.current) {
@@ -205,7 +214,6 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
       }));
     };
 
-    // Mapping...
     if (name === 'draw_stroke') { addCommand({ type: 'stroke', payload: args }); return "drawn stroke"; }
     if (name === 'draw_circle') { addCommand({ type: 'circle', payload: args }); return "drawn circle"; }
     if (name === 'draw_rectangle') { addCommand({ type: 'rect', payload: args }); return "drawn rectangle"; }
@@ -215,10 +223,7 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
     if (name === 'highlight_area') { addCommand({ type: 'highlight', payload: args }); return "highlighted"; }
     if (name === 'write_text') { addCommand({ type: 'text', payload: args }); return "written text"; }
     if (name === 'write_formula') { addCommand({ type: 'formula', payload: args }); return "written formula"; }
-    if (name === 'play_sound') { 
-        console.log(`Playing sound: ${args.sound}`); 
-        return "played sound"; 
-    }
+    if (name === 'play_sound') { console.log(`Playing sound: ${args.sound}`); return "played sound"; }
     if (name === 'insert_image') { addCommand({ type: 'image', payload: args }); return "inserted image"; }
     if (name === 'clear_board') { addCommand({ type: 'clear' }); return "cleared"; }
     if (name === 'create_new_board') {
@@ -240,19 +245,15 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
   };
 
   const handleStartSession = async () => {
-    console.log("[SessionView] User clicked Start Session");
     setShowStartOverlay(false);
     await connectSession(false);
   };
 
   const connectSession = async (isReconnect: boolean = false) => {
-    console.log(`[SessionView] Toggling connection... (isReconnect: ${isReconnect})`);
-    
     if (!isReconnect && (connectionState === ConnectionState.CONNECTED || connectionState === ConnectionState.CONNECTING)) {
-      console.log("[SessionView] Disconnecting...");
       liveClientRef.current?.disconnect();
       setConnectionState(ConnectionState.DISCONNECTED);
-      setRetryCount(3); // Stop auto-reconnects on manual disconnect
+      setRetryCount(3);
       return;
     }
 
@@ -270,28 +271,19 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
     try {
       await liveClientRef.current.connect(
         {
-          onToolCall: async (name, args) => {
-            return executeBoardCommand(name, args);
-          },
-          onClose: () => {
-            console.log("[SessionView] Connection closed callback");
-            setConnectionState(ConnectionState.DISCONNECTED);
-          },
+          onToolCall: async (name, args) => executeBoardCommand(name, args),
+          onClose: () => setConnectionState(ConnectionState.DISCONNECTED),
           onError: (err) => {
-            console.error("[SessionView] Connection error callback", err);
-            
             if (err.message.includes("Internal error") && retryCount < 3) {
-               console.log("[SessionView] Suppressing internal error for auto-reconnect");
                setConnectionState(ConnectionState.ERROR); 
                return;
             }
-
             setErrorMsg("Connection error: " + err.message);
             setConnectionState(ConnectionState.ERROR);
           }
         }, 
         user,
-        boardDims, // Pass fixed HD dimensions
+        boardDims,
         { 
             topic: session.topic, 
             pdfBase64: session.pdfContext,
@@ -300,14 +292,11 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
       );
 
       setConnectionState(ConnectionState.CONNECTED);
-      console.log("[SessionView] Connection successful");
 
     } catch (e: any) {
-      console.error("[SessionView] Init error", e);
       setConnectionState(ConnectionState.ERROR);
-      
       if (e.message.includes('Microphone')) {
-         setErrorMsg("Microphone Access Denied. Please allow microphone permissions in your browser and try again.");
+         setErrorMsg("Microphone Access Denied. Please allow microphone permissions.");
       } else {
          setErrorMsg(e.message);
       }
@@ -397,18 +386,18 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
       {/* Main Content - The "Video Player" Stage */}
       <main className="flex-1 relative bg-black flex flex-col items-center justify-center p-4 overflow-hidden">
            
-           {/* Player Wrapper: Centered, max size, aspect-video (16:9) */}
            <div 
              ref={playerContainerRef}
              className="relative w-full max-w-[177vh] aspect-video bg-slate-900 rounded-xl overflow-hidden shadow-2xl border border-slate-800"
            >
-              {/* The Actual Canvas (Fixed 1920x1080 internal) */}
               <WhiteboardCanvas 
+                ref={canvasRef}
                 commands={getActiveBoard().commands} 
                 width={boardDims.width} 
                 height={boardDims.height} 
                 userTool={userTool}
                 onUserDraw={handleUserDraw}
+                showGrid={showGrid}
               />
 
               {/* Persistent Manual Toolbar Overlay */}
@@ -435,7 +424,7 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
                  `}>
                     <button 
                       onClick={() => { setUserTool('pointer'); setIsToolbarExpanded(false); }} 
-                      className={`flex items-center gap-3 p-2.5 rounded-lg w-32 transition-colors ${userTool === 'pointer' ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30' : 'text-slate-400 hover:bg-white/10 hover:text-white'}`}
+                      className={`flex items-center gap-3 p-2.5 rounded-lg w-36 transition-colors ${userTool === 'pointer' ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30' : 'text-slate-400 hover:bg-white/10 hover:text-white'}`}
                     >
                        <MousePointer2 size={18} />
                        <span className="text-sm font-medium">Pointer</span>
@@ -443,7 +432,7 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
 
                     <button 
                       onClick={() => { setUserTool('pen'); setIsToolbarExpanded(false); }} 
-                      className={`flex items-center gap-3 p-2.5 rounded-lg w-32 transition-colors ${userTool === 'pen' ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30' : 'text-slate-400 hover:bg-white/10 hover:text-white'}`}
+                      className={`flex items-center gap-3 p-2.5 rounded-lg w-36 transition-colors ${userTool === 'pen' ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30' : 'text-slate-400 hover:bg-white/10 hover:text-white'}`}
                     >
                        <PenTool size={18} />
                        <span className="text-sm font-medium">Draw</span>
@@ -451,10 +440,28 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
 
                     <button 
                       onClick={() => { setUserTool('eraser'); setIsToolbarExpanded(false); }} 
-                      className={`flex items-center gap-3 p-2.5 rounded-lg w-32 transition-colors ${userTool === 'eraser' ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30' : 'text-slate-400 hover:bg-white/10 hover:text-white'}`}
+                      className={`flex items-center gap-3 p-2.5 rounded-lg w-36 transition-colors ${userTool === 'eraser' ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30' : 'text-slate-400 hover:bg-white/10 hover:text-white'}`}
                     >
                        <Eraser size={18} />
                        <span className="text-sm font-medium">Eraser</span>
+                    </button>
+                    
+                    <div className="h-px bg-white/10 my-1"></div>
+
+                    <button 
+                      onClick={() => { setShowGrid(!showGrid); }} 
+                      className={`flex items-center gap-3 p-2.5 rounded-lg w-36 transition-colors ${showGrid ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30' : 'text-slate-400 hover:bg-white/10 hover:text-white'}`}
+                    >
+                       <Grid3X3 size={18} />
+                       <span className="text-sm font-medium">Grid</span>
+                    </button>
+
+                    <button 
+                      onClick={handleDownloadSnapshot}
+                      className="flex items-center gap-3 p-2.5 rounded-lg w-36 text-slate-400 hover:bg-white/10 hover:text-white transition-colors"
+                    >
+                       <Camera size={18} />
+                       <span className="text-sm font-medium">Snapshot</span>
                     </button>
                  </div>
               </div>
