@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Mic, MicOff, BrainCircuit, Info, LayoutTemplate, Volume2, ArrowLeft, User, PenTool, Eraser, MousePointer2, ChevronRight, ChevronLeft, Play, Signal, Smartphone, RotateCw, Maximize2, Minimize2, Settings, X, ChevronDown, ChevronUp, Camera, Grid3X3, FastForward } from 'lucide-react';
+import { Mic, MicOff, BrainCircuit, Info, LayoutTemplate, Volume2, ArrowLeft, User, PenTool, Eraser, MousePointer2, ChevronRight, ChevronLeft, Play, Signal, Smartphone, RotateCw, Maximize2, Minimize2, Settings, X, ChevronDown, ChevronUp, Camera, Grid3X3, FastForward, Captions } from 'lucide-react';
 import WhiteboardCanvas, { WhiteboardHandle } from '../components/WhiteboardCanvas';
 import BoardCarousel from '../components/BoardCarousel';
 import ThinkingModal from '../components/ThinkingModal';
@@ -32,6 +32,11 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
   // User State
   const [userTool, setUserTool] = useState<UserTool>('pointer');
   const [isToolbarExpanded, setIsToolbarExpanded] = useState(false);
+  
+  // Captions State
+  const [captionText, setCaptionText] = useState('');
+  const [showCaptions, setShowCaptions] = useState(false);
+  const captionTimeoutRef = useRef<any>(null);
   
   // Laser Pointer State (Ephemeral)
   const [currentLaserPoint, setCurrentLaserPoint] = useState<{x: number, y: number} | null>(null);
@@ -317,6 +322,18 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
             }
             setErrorMsg("Connection error: " + err.message);
             setConnectionState(ConnectionState.ERROR);
+          },
+          onCaption: (text) => {
+            setCaptionText(prev => {
+              // Accumulate text, but keep it from getting too large if needed
+              // For a simple movie subtitle effect, we just append.
+              return prev + text;
+            });
+            // Reset hide timer
+            if (captionTimeoutRef.current) clearTimeout(captionTimeoutRef.current);
+            captionTimeoutRef.current = setTimeout(() => {
+                setCaptionText('');
+            }, 4000); // Clear after 4 seconds of silence
           }
         }, 
         user,
@@ -348,15 +365,15 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
       </div>
       
       {/* Session Header */}
-      <header className="flex-none h-16 border-b border-white/5 flex items-center justify-between px-3 sm:px-6 bg-[#020617]/80 backdrop-blur-xl z-20">
-        <div className="flex items-center space-x-2 sm:space-x-4">
-          <button onClick={() => { saveSessionState(); onExit(); }} className="text-slate-400 hover:text-white p-2 rounded-full hover:bg-white/10 transition-colors">
+      <header className="flex-none h-16 border-b border-white/5 flex items-center px-3 sm:px-6 bg-[#020617]/80 backdrop-blur-xl z-20">
+        <div className="flex-1 flex items-center justify-start space-x-2 sm:space-x-4 min-w-0">
+          <button onClick={() => { saveSessionState(); onExit(); }} className="text-slate-400 hover:text-white p-2 rounded-full hover:bg-white/10 transition-colors flex-shrink-0">
             <ArrowLeft size={20} />
           </button>
-          <div className="flex items-center space-x-2">
-            <Logo size="sm" className="hidden lg:flex" />
-            <div className="h-6 w-px bg-white/10 mx-2 hidden lg:block"></div>
-            <div>
+          <div className="flex items-center space-x-2 min-w-0">
+            <Logo size="sm" className="hidden lg:flex flex-shrink-0" />
+            <div className="h-6 w-px bg-white/10 mx-2 hidden lg:block flex-shrink-0"></div>
+            <div className="min-w-0">
               <input 
                 value={sessionTitle}
                 onChange={(e) => setSessionTitle(e.target.value)}
@@ -367,40 +384,50 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
           </div>
         </div>
 
-        {/* Audio Visualizer (Holo Style) */}
+        {/* Audio Visualizer (Holo Style) - Flow Layout now, hidden on smaller screens */}
         {connectionState === ConnectionState.CONNECTED && (
-          <div className="hidden md:flex items-center space-x-4 px-6 py-1.5 bg-black/40 rounded-full border border-cyan-500/30 shadow-[0_0_15px_rgba(34,211,238,0.15)] absolute left-1/2 -translate-x-1/2 backdrop-blur-md">
+          <div className="hidden xl:flex flex-none items-center space-x-4 px-6 py-1.5 bg-black/40 rounded-full border border-cyan-500/30 shadow-[0_0_15px_rgba(34,211,238,0.15)] backdrop-blur-md mx-4">
              <AudioPulse active={!isMicMuted} volume={isMicMuted ? 0 : audioLevels.input} color="blue" label="YOU" />
              <div className="h-6 w-px bg-white/10"></div>
              <AudioPulse active={true} volume={audioLevels.output} color="purple" label="AI" />
           </div>
         )}
 
-        <div className="flex items-center space-x-2 sm:space-x-4">
+        <div className="flex-1 flex items-center justify-end space-x-2 sm:space-x-4 min-w-0">
            {connectionState === ConnectionState.CONNECTED && (
              <>
                 <button
+                   onClick={() => setShowCaptions(!showCaptions)}
+                   title={showCaptions ? "Hide Captions" : "Show Captions"}
+                   className={`p-2.5 rounded-full transition-all border flex-shrink-0 ${showCaptions ? 'bg-cyan-500/20 text-cyan-400 border-cyan-500/50 shadow-[0_0_10px_rgba(34,211,238,0.3)]' : 'bg-white/5 text-slate-400 border-white/10 hover:text-white hover:bg-white/10'}`}
+                >
+                   <Captions size={18} />
+                </button>
+
+                <button
                    onClick={handleNudge}
                    title="Nudge: Tell AI to move on"
-                   className="p-2.5 rounded-full bg-white/5 text-yellow-400 hover:bg-yellow-500/10 border border-yellow-500/30 transition-all hover:shadow-[0_0_10px_rgba(250,204,21,0.2)]"
+                   className="p-2.5 rounded-full bg-white/5 text-yellow-400 hover:bg-yellow-500/10 border border-yellow-500/30 transition-all hover:shadow-[0_0_10px_rgba(250,204,21,0.2)] flex-shrink-0"
                 >
                    <FastForward size={18} />
                 </button>
 
                 <button
                     onClick={toggleMute}
-                    className={`p-2.5 rounded-full transition-all border ${isMicMuted ? 'bg-red-500/10 text-red-400 border-red-500/30' : 'bg-white/5 text-slate-300 hover:text-white border-white/10 hover:bg-white/10'}`}
+                    className={`p-2.5 rounded-full transition-all border flex-shrink-0 ${isMicMuted ? 'bg-red-500/10 text-red-400 border-red-500/30' : 'bg-white/5 text-slate-300 hover:text-white border-white/10 hover:bg-white/10'}`}
                 >
                    {isMicMuted ? <MicOff size={18} /> : <Mic size={18} />}
                 </button>
              </>
            )}
 
-           <NetworkStatus state={connectionState === ConnectionState.ERROR && retryCount > 0 ? ConnectionState.CONNECTING : connectionState} />
+           <div className="flex-shrink-0">
+             <NetworkStatus state={connectionState === ConnectionState.ERROR && retryCount > 0 ? ConnectionState.CONNECTING : connectionState} />
+           </div>
 
            <button 
              onClick={() => setIsThinkingOpen(true)}
-             className="hidden sm:flex items-center space-x-1 sm:space-x-2 text-xs sm:text-sm text-purple-300 hover:text-white px-3 py-2 rounded-lg hover:bg-purple-500/10 border border-transparent hover:border-purple-500/30 transition-all"
+             className="hidden md:flex items-center space-x-1 sm:space-x-2 text-xs sm:text-sm text-purple-300 hover:text-white px-3 py-2 rounded-lg hover:bg-purple-500/10 border border-transparent hover:border-purple-500/30 transition-all flex-shrink-0"
            >
              <BrainCircuit size={16} />
              <span>Deep Think</span>
@@ -409,7 +436,7 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
            <button 
              onClick={() => connectSession(false)}
              className={`
-               flex items-center space-x-2 px-3 sm:px-5 py-2 rounded-full font-bold transition-all shadow-lg text-xs sm:text-sm
+               flex items-center space-x-2 px-3 sm:px-5 py-2 rounded-full font-bold transition-all shadow-lg text-xs sm:text-sm flex-shrink-0
                ${connectionState === ConnectionState.CONNECTED 
                  ? 'bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/30 hover:shadow-[0_0_15px_rgba(239,68,68,0.3)]' 
                  : connectionState === ConnectionState.CONNECTING || (connectionState === ConnectionState.ERROR && retryCount > 0)
@@ -435,7 +462,7 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
            
            <div 
              ref={playerContainerRef}
-             className="relative w-full max-w-[177vh] aspect-video bg-slate-900 rounded-xl overflow-hidden shadow-2xl border border-slate-800"
+             className="relative w-full max-w-[177vh] aspect-video bg-slate-900 rounded-xl overflow-hidden shadow-2xl border border-slate-800 group"
            >
               <WhiteboardCanvas 
                 ref={canvasRef}
@@ -448,9 +475,17 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
                 laserPoint={currentLaserPoint}
               />
 
+              {/* Captions Overlay */}
+              {showCaptions && captionText && (
+                <div className="absolute bottom-16 left-0 right-0 flex justify-center px-8 z-30">
+                  <div className="bg-black/70 backdrop-blur-md text-white text-lg md:text-xl font-medium px-6 py-3 rounded-xl text-center shadow-lg border border-white/5 animate-in fade-in slide-in-from-bottom-2 duration-300 max-w-4xl">
+                     {captionText}
+                  </div>
+                </div>
+              )}
+
               {/* Persistent Manual Toolbar Overlay */}
               <div className="absolute top-6 left-6 z-50 flex flex-col items-start gap-2">
-                 
                  {/* Toggle Button */}
                  <button
                     onClick={() => setIsToolbarExpanded(!isToolbarExpanded)}

@@ -67,10 +67,10 @@ const WhiteboardCanvas = forwardRef<WhiteboardHandle, WhiteboardCanvasProps>(({
      let frameId: number;
      const loop = () => {
         const now = Date.now();
-        // Remove points older than 1.5 seconds
+        // Remove points older than 0.8 seconds (faster fade for snappier feel)
         setLaserTrail(prev => {
             if (prev.length === 0) return prev;
-            const filtered = prev.filter(p => now - p.id < 1500);
+            const filtered = prev.filter(p => now - p.id < 800);
             return filtered.length !== prev.length ? filtered : prev;
         });
         frameId = requestAnimationFrame(loop);
@@ -120,43 +120,56 @@ const WhiteboardCanvas = forwardRef<WhiteboardHandle, WhiteboardCanvasProps>(({
   }, [commands, width, height, currentStroke, userTool, showGrid, laserTrail]);
 
   const renderLaser = (ctx: CanvasRenderingContext2D, trail: {x: number, y: number, id: number}[]) => {
+     if (trail.length === 0) return;
+     
      const now = Date.now();
+     
+     // Save context for composite operations
+     ctx.save();
+     
+     // Use 'lighter' to create a glowing effect when overlapping
+     ctx.globalCompositeOperation = 'lighter';
      ctx.lineCap = 'round';
      ctx.lineJoin = 'round';
 
-     // Draw the trail
-     if (trail.length > 1) {
+     // Draw the tail (fading out)
+     // We'll draw segments with varying opacity and width
+     for (let i = 0; i < trail.length - 1; i++) {
+        const p1 = trail[i];
+        const p2 = trail[i+1];
+        
+        const age = now - p2.id;
+        const life = Math.max(0, 1 - age / 800); // 0 to 1
+        
+        if (life <= 0) continue;
+
+        const size = 4 + (life * 12); // Tapers from 16px to 4px
+        
         ctx.beginPath();
-        // Start from first point
-        ctx.moveTo(trail[0].x, trail[0].y);
+        ctx.moveTo(p1.x, p1.y);
+        ctx.lineTo(p2.x, p2.y);
         
-        for (let i = 1; i < trail.length; i++) {
-           ctx.lineTo(trail[i].x, trail[i].y);
-        }
+        // Outer Glow
+        ctx.shadowBlur = 15;
+        ctx.shadowColor = `rgba(239, 68, 68, ${life})`; // Red glow
         
-        ctx.shadowBlur = 20;
-        ctx.shadowColor = '#fca5a5'; // Red glow
-        ctx.strokeStyle = 'rgba(252, 165, 165, 0.6)'; // Red-ish transparent
-        ctx.lineWidth = 8;
+        // Stroke
+        ctx.strokeStyle = `rgba(252, 165, 165, ${life * 0.8})`; // Red-ish
+        ctx.lineWidth = size;
         ctx.stroke();
-        ctx.shadowBlur = 0;
      }
 
-     // Draw the glowing dots (tips)
-     trail.forEach(p => {
-        const age = now - p.id;
-        const opacity = Math.max(0, 1 - age / 1500);
-        
-        ctx.beginPath();
-        ctx.fillStyle = `rgba(239, 68, 68, ${opacity})`; // Red-500
-        ctx.arc(p.x, p.y, 8, 0, Math.PI * 2);
-        ctx.fill();
+     // Draw the "Head" (Current Position) - Intense White Hot Core
+     const head = trail[trail.length - 1];
+     ctx.shadowBlur = 25;
+     ctx.shadowColor = '#ef4444'; // Red-500
+     ctx.fillStyle = '#ffffff';
+     ctx.beginPath();
+     ctx.arc(head.x, head.y, 8, 0, Math.PI * 2);
+     ctx.fill();
 
-        ctx.beginPath();
-        ctx.fillStyle = `rgba(255, 255, 255, ${opacity})`;
-        ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
-        ctx.fill();
-     });
+     // Restore context
+     ctx.restore();
   };
 
   const drawGrid = (ctx: CanvasRenderingContext2D, w: number, h: number) => {

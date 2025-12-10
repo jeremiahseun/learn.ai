@@ -8,6 +8,7 @@ interface LiveClientCallbacks {
   onToolCall: (name: string, args: any) => Promise<any>;
   onClose: () => void;
   onError: (error: Error) => void;
+  onCaption?: (text: string) => void;
 }
 
 export class GeminiLiveClient {
@@ -114,6 +115,8 @@ export class GeminiLiveClient {
       speechConfig: {
         voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Puck' } },
       },
+      // Enable real-time transcription of the model's audio output
+      outputAudioTranscription: {}, 
     };
 
     // 5. Connect to Websocket
@@ -135,7 +138,6 @@ export class GeminiLiveClient {
             // Handle Audio
             const audioData = message.serverContent?.modelTurn?.parts?.[0]?.inlineData?.data;
             if (audioData && this.outputAudioContext) {
-               console.log("[GeminiService] Received audio chunk from model");
                try {
                  const buffer = await decodeAudioData(
                    base64ToUint8Array(audioData), 
@@ -145,6 +147,12 @@ export class GeminiLiveClient {
                } catch (e) {
                  console.error("[GeminiService] Error decoding audio", e);
                }
+            }
+
+            // Handle Captions / Transcription
+            const transcriptionText = message.serverContent?.outputTranscription?.text;
+            if (transcriptionText) {
+                callbacks.onCaption?.(transcriptionText);
             }
 
             // Handle Tool Calls
