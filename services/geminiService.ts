@@ -241,6 +241,22 @@ export class GeminiLiveClient {
     }
   }
 
+  // --- NEW: Method to send image frames (Vision) ---
+  async sendImageFrame(base64Data: string) {
+    if (!this.sessionPromise || !this.isActive) return;
+    try {
+      const session = await this.sessionPromise;
+      session.sendRealtimeInput({
+        media: {
+          mimeType: 'image/jpeg',
+          data: base64Data
+        }
+      });
+    } catch (e) {
+       // Silent fail for frame drops
+    }
+  }
+
   private playAudio(buffer: AudioBuffer) {
     if (!this.outputAudioContext || !this.outputGain) return;
 

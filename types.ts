@@ -1,4 +1,5 @@
 
+
 export interface Point {
   x: number;
   y: number;
@@ -246,4 +247,30 @@ export interface Session {
   createdAt: number;
   topic?: string;
   pdfContext?: string; // Base64 of PDF, ephemeral (not saved to localStorage if too big)
+}
+
+// --- Board Brain Semantic Types ---
+
+export type SemanticRole = 'title' | 'heading' | 'body' | 'example' | 'note' | 'container' | 'connector' | 'label' | 'group-title';
+export type SemanticPosition = 
+  | 'top-center' | 'top-left' | 'top-right' 
+  | 'center' 
+  | 'left' | 'right' 
+  | 'bottom-center' | 'bottom-left' | 'bottom-right' 
+  | 'below' | 'right-of' | 'left-of'
+  | 'below-left' | 'below-right'; // For trees
+
+export interface BrainElement {
+  id: string;
+  role: SemanticRole;
+  bbox: { x: number, y: number, w: number, h: number };
+  refId?: string; // For relative positioning
+  groupId?: string; // Belonging to a logical group
+  text?: string;
+}
+
+export interface BrainGroup {
+  id: string;
+  title: string;
+  bbox: { x: number, y: number, w: number, h: number };
 }

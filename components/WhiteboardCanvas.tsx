@@ -17,7 +17,7 @@ import {
 } from '../types';
 
 export interface WhiteboardHandle {
-  exportImage: () => string; // Returns data URL
+  exportImage: (type?: string, quality?: number) => string; // Returns data URL
 }
 
 interface WhiteboardCanvasProps {
@@ -48,10 +48,10 @@ const WhiteboardCanvas = forwardRef<WhiteboardHandle, WhiteboardCanvasProps>(({
 
   // Expose methods to parent
   useImperativeHandle(ref, () => ({
-    exportImage: () => {
+    exportImage: (type = 'image/png', quality = 0.8) => {
       const canvas = canvasRef.current;
       if (!canvas) return '';
-      return canvas.toDataURL('image/png');
+      return canvas.toDataURL(type, quality);
     }
   }));
 

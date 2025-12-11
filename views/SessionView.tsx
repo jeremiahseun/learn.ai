@@ -8,6 +8,7 @@ import AudioPulse from '../components/AudioPulse';
 import NetworkStatus from '../components/NetworkStatus';
 import { ConnectionState, BoardCommand, StudentProfile, UserTool, Session, BoardData } from '../types';
 import { GeminiLiveClient } from '../services/geminiService';
+import { BoardBrain } from '../services/BoardBrain';
 import Logo from '../components/Logo';
 
 interface SessionViewProps {
@@ -55,7 +56,10 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
   const boardDims = { width: 1920, height: 1080 };
 
   const liveClientRef = useRef<GeminiLiveClient | null>(null);
+  // Board Brain Logic
+  const boardBrainRef = useRef<BoardBrain>(new BoardBrain(boardDims.width, boardDims.height));
   const activeBoardIdRef = useRef(activeBoardId);
+  const isBoardDirtyRef = useRef(false);
   
   // Refs for saving & context
   const boardsRef = useRef(boards);
@@ -101,6 +105,26 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
        setRetryCount(0); // Reset retries on success
     }
   }, [connectionState, retryCount]);
+
+  // --- VISION STREAMING LOOP ---
+  // Sends a screenshot of the board to the AI every 2 seconds if something changed
+  useEffect(() => {
+    if (connectionState !== ConnectionState.CONNECTED) return;
+    
+    const interval = setInterval(() => {
+       if (canvasRef.current && liveClientRef.current && isBoardDirtyRef.current) {
+          // Export as JPEG (lighter payload than PNG)
+          const dataUrl = canvasRef.current.exportImage('image/jpeg', 0.5); 
+          const base64 = dataUrl.split(',')[1];
+          
+          liveClientRef.current.sendImageFrame(base64);
+          isBoardDirtyRef.current = false;
+          // console.log("[Vision] Sent board frame to AI");
+       }
+    }, 2000); // 2 second interval is a good balance for latency vs tokens
+
+    return () => clearInterval(interval);
+  }, [connectionState]);
 
   const toggleFullscreen = async () => {
     if (!playerContainerRef.current) return;
@@ -178,6 +202,9 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
      // New boards default to NO grid
      setBoards(prev => [...prev, { id: newId, commands: [], lastSaved: Date.now(), gridActive: false }]);
      setActiveBoardId(newId);
+     // Reset brain state for new board
+     boardBrainRef.current.reset();
+     isBoardDirtyRef.current = true;
   };
 
   const handleDeleteBoard = (id: string) => {
@@ -189,9 +216,11 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
       const newBoards = prev.filter(b => b.id !== id);
       if (id === activeBoardId) {
         setActiveBoardId(newBoards[newBoards.length - 1].id);
+        boardBrainRef.current.reset();
       }
       return newBoards;
     });
+    isBoardDirtyRef.current = true;
   };
 
   const handleClearBoard = (id: string) => {
@@ -201,6 +230,8 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
       }
       return b;
     }));
+    boardBrainRef.current.reset();
+    isBoardDirtyRef.current = true;
   };
 
   const handleUserDraw = (command: BoardCommand) => {
@@ -210,6 +241,8 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
       }
       return b;
     }));
+    // Flag the board as "dirty" so the vision loop picks it up and sends it to the AI
+    isBoardDirtyRef.current = true;
   };
 
   const handleNudge = () => {
@@ -226,8 +259,10 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
       }
       return b;
     }));
+    isBoardDirtyRef.current = true;
   };
 
+  // --- BRAIN INTEGRATION ---
   const executeBoardCommand = async (name: string, args: any): Promise<any> => {
     const addCommand = (command: BoardCommand) => {
       setBoards(prev => prev.map(b => {
@@ -236,45 +271,77 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
         }
         return b;
       }));
+      // The AI drew something, so we also mark dirty to keep sync, 
+      // although technically the AI knows what it just drew.
+      isBoardDirtyRef.current = true; 
     };
 
-    if (name === 'draw_stroke') { addCommand({ type: 'stroke', payload: args }); return "drawn stroke"; }
-    if (name === 'draw_circle') { addCommand({ type: 'circle', payload: args }); return "drawn circle"; }
-    if (name === 'draw_rectangle') { addCommand({ type: 'rect', payload: args }); return "drawn rectangle"; }
-    if (name === 'draw_line') { addCommand({ type: 'line', payload: args }); return "drawn line"; }
-    if (name === 'draw_arrow') { addCommand({ type: 'arrow', payload: args }); return "drawn arrow"; }
-    if (name === 'draw_polygon') { addCommand({ type: 'polygon', payload: args }); return "drawn polygon"; }
-    if (name === 'highlight_area') { addCommand({ type: 'highlight', payload: args }); return "highlighted"; }
-    if (name === 'write_text') { addCommand({ type: 'text', payload: args }); return "written text"; }
-    if (name === 'write_formula') { addCommand({ type: 'formula', payload: args }); return "written formula"; }
-    if (name === 'play_sound') { console.log(`Playing sound: ${args.sound}`); return "played sound"; }
-    if (name === 'insert_image') { addCommand({ type: 'image', payload: args }); return "inserted image"; }
-    if (name === 'clear_board') { addCommand({ type: 'clear' }); return "cleared"; }
-    
-    // Feature: Grid Toggle by AI
+    // 1. Semantic Text
+    if (name === 'write_text') {
+       const res = boardBrainRef.current.writeText(args.text, args.role, args.position, args.relative_to_id, args.group_id);
+       addCommand(res.command);
+       return { success: true, element_id: res.id };
+    }
+
+    // 2. Semantic Shape
+    if (name === 'draw_shape') {
+       const res = boardBrainRef.current.drawShape(args.shape, args.role, args.position, args.relative_to_id, args.group_id);
+       if (res) {
+          addCommand(res.command);
+          return { success: true, element_id: res.id };
+       }
+       return { success: false, error: "Could not place shape" };
+    }
+
+    // 3. Create Group
+    if (name === 'create_group') {
+        const res = boardBrainRef.current.createGroup(args.title, args.position);
+        // Groups might be purely logical, but we can visualize them with a light container
+        if (res.command) addCommand(res.command);
+        return { success: true, group_id: res.id };
+    }
+
+    // 4. Connect Elements
+    if (name === 'connect_elements') {
+        const res = boardBrainRef.current.connectElements(args.source_id, args.target_id, args.label);
+        if (res) {
+            addCommand(res.command);
+            if (res.labelCommand) addCommand(res.labelCommand);
+            return { success: true };
+        }
+        return { success: false, error: "Could not connect elements (ids not found)" };
+    }
+
+    // 5. Inspection
+    if (name === 'inspect_board') {
+       return boardBrainRef.current.getStateDescription();
+    }
+
+    // 6. Board Management
+    if (name === 'create_new_board') {
+      const newId = `board-${Date.now()}`;
+      setBoards(prev => [...prev, { id: newId, commands: [], lastSaved: Date.now(), gridActive: false }]);
+      setActiveBoardId(newId); 
+      activeBoardIdRef.current = newId; 
+      boardBrainRef.current.reset();
+      console.log(`[SessionView] Created new board: ${newId}`);
+      return `created board ${newId}`;
+    }
+
+    // 7. Utility
     if (name === 'toggle_grid') {
        const isVisible = args.visible;
        setBoards(prev => prev.map(b => {
          if (b.id === activeBoardIdRef.current) return { ...b, gridActive: isVisible };
          return b;
        }));
+       isBoardDirtyRef.current = true;
        return `grid set to ${isVisible}`;
     }
 
-    // Feature: Laser Pointer
     if (name === 'laser_pointer') {
        setCurrentLaserPoint({ x: args.x, y: args.y });
        return "pointed";
-    }
-
-    if (name === 'create_new_board') {
-      const newId = `board-${Date.now()}`;
-      // New boards have grid OFF by default as requested
-      setBoards(prev => [...prev, { id: newId, commands: [], lastSaved: Date.now(), gridActive: false }]);
-      setActiveBoardId(newId); 
-      activeBoardIdRef.current = newId; 
-      console.log(`[SessionView] Created new board: ${newId}`);
-      return `created board ${newId}`;
     }
 
     return "unknown tool";
@@ -549,11 +616,11 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
                  </div>
               </div>
 
-              {/* Fullscreen Button */}
-              <div className="absolute bottom-6 right-6 z-20 opacity-0 group-hover:opacity-100 sm:opacity-100 transition-opacity">
+              {/* Fullscreen Button - Fixed visibility on mobile */}
+              <div className="absolute bottom-6 right-6 z-20 flex opacity-100 transition-opacity">
                  <button 
                    onClick={toggleFullscreen}
-                   className="p-3 bg-black/60 backdrop-blur-md rounded-full text-slate-300 hover:text-white hover:bg-white/10 border border-white/10 transition-all"
+                   className="p-3 bg-black/60 backdrop-blur-md rounded-full text-slate-300 hover:text-white hover:bg-white/10 border border-white/10 transition-all shadow-lg"
                  >
                    {isFullscreen ? <Minimize2 size={24} /> : <Maximize2 size={24} />}
                  </button>
