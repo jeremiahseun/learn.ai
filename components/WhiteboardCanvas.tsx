@@ -374,14 +374,21 @@ const WhiteboardCanvas = forwardRef<WhiteboardHandle, WhiteboardCanvasProps>(({
     ctx.fillRect(x, y, width, height);
   };
 
+  // --- UPDATED: Use 'Kalam' font for handwriting style ---
   const writeText = (ctx: CanvasRenderingContext2D, payload: WriteTextPayload) => {
     const { text, x, y, color = '#ffffff', size = 24, align = 'left' } = payload;
-    ctx.font = `${size}px sans-serif`;
+    
+    // Using Kalam font, fallback to cursive or sans-serif
+    // Increased base size slightly for better legibility with handwritten fonts
+    const fontSize = size + 4; 
+    ctx.font = `400 ${fontSize}px 'Kalam', cursive, sans-serif`;
+    
     ctx.textBaseline = 'top'; 
     ctx.textAlign = align as CanvasTextAlign;
     
+    // Reduced stroke for cleaner look with handwriting font
     ctx.strokeStyle = '#0f172a';
-    ctx.lineWidth = 5;
+    ctx.lineWidth = 4;
     ctx.strokeText(text, x, y);
 
     ctx.fillStyle = color;
@@ -390,11 +397,12 @@ const WhiteboardCanvas = forwardRef<WhiteboardHandle, WhiteboardCanvasProps>(({
 
   const writeFormula = (ctx: CanvasRenderingContext2D, payload: InsertMathFormulaPayload) => {
      const { expression, x, y, color = '#fbbf24', size = 36 } = payload;
-     ctx.font = `italic ${size}px serif`;
+     // Math usually stays serif/italic, but we can make it match the vibe
+     ctx.font = `italic 700 ${size}px 'Kalam', serif`; 
      ctx.textBaseline = 'top';
      
      ctx.strokeStyle = '#0f172a';
-     ctx.lineWidth = 5;
+     ctx.lineWidth = 4;
      ctx.strokeText(expression, x, y);
 
      ctx.fillStyle = color;

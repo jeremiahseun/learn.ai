@@ -2,14 +2,15 @@
 import { BoardCommand, BrainElement, BrainGroup, SemanticPosition, SemanticRole } from "../types";
 
 // Configuration for semantic styles
+// UPDATED: Increased sizes for 'Kalam' handwriting font
 const STYLES = {
-  title: { size: 48, color: '#22d3ee', margin: 40, weight: 'bold', align: 'center' }, // Cyan
-  heading: { size: 32, color: '#f8fafc', margin: 30, weight: 'bold', align: 'left' }, // White
-  body: { size: 24, color: '#94a3b8', margin: 20, weight: 'normal', align: 'left' }, // Slate-400
-  example: { size: 20, color: '#86efac', margin: 20, weight: 'normal', align: 'left' }, // Green
-  note: { size: 18, color: '#facc15', margin: 15, weight: 'light', align: 'left' }, // Yellow
-  label: { size: 18, color: '#e879f9', margin: 10, weight: 'bold', align: 'center' }, // Purple
-  'group-title': { size: 22, color: '#a5b4fc', margin: 20, weight: 'bold', align: 'left' }, // Indigo-300
+  title: { size: 56, color: '#22d3ee', margin: 40, weight: 'bold', align: 'center' }, // Cyan
+  heading: { size: 36, color: '#f8fafc', margin: 30, weight: 'bold', align: 'left' }, // White
+  body: { size: 28, color: '#94a3b8', margin: 20, weight: 'normal', align: 'left' }, // Slate-400
+  example: { size: 24, color: '#86efac', margin: 20, weight: 'normal', align: 'left' }, // Green
+  note: { size: 22, color: '#facc15', margin: 15, weight: 'light', align: 'left' }, // Yellow
+  label: { size: 22, color: '#e879f9', margin: 10, weight: 'bold', align: 'center' }, // Purple
+  'group-title': { size: 26, color: '#a5b4fc', margin: 20, weight: 'bold', align: 'left' }, // Indigo-300
   container: { color: '#334155', width: 2 }, // Border color
   connector: { color: '#64748b', width: 2 },
 };
