@@ -376,7 +376,7 @@ const WhiteboardCanvas = forwardRef<WhiteboardHandle, WhiteboardCanvasProps>(({
 
   // --- UPDATED: Use 'Kalam' font for handwriting style ---
   const writeText = (ctx: CanvasRenderingContext2D, payload: WriteTextPayload) => {
-    const { text, x, y, color = '#ffffff', size = 24, align = 'left' } = payload;
+    const { text, x, y, color = '#ffffff', size = 24, align = 'left', maxWidth } = payload;
     
     // Using Kalam font, fallback to cursive or sans-serif
     // Increased base size slightly for better legibility with handwritten fonts
@@ -389,10 +389,43 @@ const WhiteboardCanvas = forwardRef<WhiteboardHandle, WhiteboardCanvasProps>(({
     // Reduced stroke for cleaner look with handwriting font
     ctx.strokeStyle = '#0f172a';
     ctx.lineWidth = 4;
-    ctx.strokeText(text, x, y);
-
     ctx.fillStyle = color;
-    ctx.fillText(text, x, y);
+
+    // Line Height
+    const lineHeight = fontSize * 1.4;
+
+    if (!maxWidth || text.length < 10) {
+        // Fallback for non-wrapped text
+        ctx.strokeText(text, x, y);
+        ctx.fillText(text, x, y);
+        return;
+    }
+
+    // Word Wrap Logic
+    const words = text.split(' ');
+    let line = '';
+    let currentY = y;
+
+    for (let i = 0; i < words.length; i++) {
+        const testLine = line + words[i] + ' ';
+        const metrics = ctx.measureText(testLine);
+        const testWidth = metrics.width;
+        
+        if (testWidth > maxWidth && i > 0) {
+            // Draw current line
+            ctx.strokeText(line, x, currentY);
+            ctx.fillText(line, x, currentY);
+            
+            // Move to next line
+            line = words[i] + ' ';
+            currentY += lineHeight;
+        } else {
+            line = testLine;
+        }
+    }
+    // Draw last line
+    ctx.strokeText(line, x, currentY);
+    ctx.fillText(line, x, currentY);
   };
 
   const writeFormula = (ctx: CanvasRenderingContext2D, payload: InsertMathFormulaPayload) => {

@@ -1,5 +1,4 @@
 
-
 export interface Point {
   x: number;
   y: number;
@@ -18,6 +17,7 @@ export interface WriteTextPayload {
   color?: string;
   size?: number;
   align?: 'left' | 'center' | 'right';
+  maxWidth?: number;
 }
 
 export interface DrawCirclePayload {

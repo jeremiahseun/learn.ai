@@ -228,14 +228,17 @@ export class BoardBrain {
     const textStyle = style as typeof STYLES.body;
 
     // 1. Dynamic Dimension Estimation
-    const MAX_WIDTH = 400; 
-    const avgCharWidth = textStyle.size * 0.55; 
+    // Updated max width for non-titles to ensure wrapping before edges
+    const MAX_WIDTH = role === 'title' ? this.width * 0.8 : 500; 
     
-    const estWidth = Math.min(text.length * avgCharWidth, (role === 'title' ? this.width * 0.8 : MAX_WIDTH));
+    // Increased average char width multiplier to 0.7 to account for 'Kalam' wide handwriting font
+    const avgCharWidth = textStyle.size * 0.7; 
+    
+    const estWidth = Math.min(text.length * avgCharWidth, MAX_WIDTH);
     
     const charsPerLine = Math.floor(estWidth / avgCharWidth);
     const estimatedLines = Math.max(1, Math.ceil(text.length / charsPerLine));
-    const lineHeight = textStyle.size * 1.4;
+    const lineHeight = textStyle.size * 1.5; // Slight bump in line height spacing
     const estHeight = estimatedLines * lineHeight;
     
     // 2. Find Position
@@ -294,7 +297,8 @@ export class BoardBrain {
         y: bbox.y,
         color: textStyle.color,
         size: textStyle.size,
-        align: textStyle.align as 'left' | 'center' | 'right'
+        align: textStyle.align as 'left' | 'center' | 'right',
+        maxWidth: bbox.w // Send strict max width for wrapping logic in renderer
       }
     };
 
@@ -613,14 +617,19 @@ export class BoardBrain {
           }
       }
 
-      // Hard Bump Down fallback
-      return { x: 50, y: Math.max(this.currentY, target.y + 200), w: target.w, h: target.h };
+      // Hard Bump Down fallback - Ensure we don't go off screen bottom if possible
+      const fallbackY = Math.max(this.currentY, target.y + 200);
+      const safeY = Math.min(fallbackY, this.height - target.h - 20); // Clamp to bottom
+      
+      return { x: 50, y: safeY, w: target.w, h: target.h };
   }
 
   private isValidSpace(rect: {x:number, y:number, w:number, h:number}): boolean {
-      if (rect.x < 0 || rect.y < 0) return false;
-      if (rect.x + rect.w > this.width) return false;
-      if (rect.y + rect.h > this.height) return false; 
+      const PADDING = 40; // Enforce explicit margins from the edge of the screen
+      
+      if (rect.x < PADDING || rect.y < PADDING) return false;
+      if (rect.x + rect.w > this.width - PADDING) return false;
+      if (rect.y + rect.h > this.height - PADDING) return false; 
 
       for (const el of this.elements) {
           if (this.checkOverlap(rect, el.bbox)) return false;
