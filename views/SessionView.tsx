@@ -6,7 +6,7 @@ import BoardCarousel from '../components/BoardCarousel';
 import ThinkingModal from '../components/ThinkingModal';
 import AudioPulse from '../components/AudioPulse';
 import NetworkStatus from '../components/NetworkStatus';
-import { ConnectionState, BoardCommand, StudentProfile, UserTool, Session, BoardData } from '../types';
+import { ConnectionState, BoardCommand, StudentProfile, UserTool, Session, BoardData, Subject } from '../types';
 import { GeminiLiveClient } from '../services/geminiService';
 import { BoardBrain } from '../services/BoardBrain';
 import Logo from '../components/Logo';
@@ -70,6 +70,16 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
   useEffect(() => { boardsRef.current = boards; }, [boards]);
   useEffect(() => { sessionTitleRef.current = sessionTitle; }, [sessionTitle]);
   useEffect(() => { retryCountRef.current = retryCount; }, [retryCount]);
+
+  // Auto-dismiss Error Messages
+  useEffect(() => {
+    if (errorMsg) {
+        const timer = setTimeout(() => {
+            setErrorMsg(null);
+        }, 3000); // Clear after 3 seconds
+        return () => clearTimeout(timer);
+    }
+  }, [errorMsg]);
 
   // Handle Fullscreen Change Events
   useEffect(() => {
@@ -273,6 +283,17 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
       isBoardDirtyRef.current = true; 
     };
 
+    // 0. Set Subject
+    if (name === 'set_subject') {
+        const subject = args.subject as Subject;
+        boardBrainRef.current.setSubject(subject);
+        setBoards(prev => prev.map(b => {
+            if (b.id === activeBoardIdRef.current) return { ...b, subject };
+            return b;
+        }));
+        return { success: true, subject };
+    }
+
     // 1. Semantic Text
     if (name === 'write_text') {
        const res = boardBrainRef.current.writeText(args.text, args.role, args.position, args.relative_to_id, args.group_id);
@@ -282,7 +303,7 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
 
     // 2. Semantic Shape
     if (name === 'draw_shape') {
-       const res = boardBrainRef.current.drawShape(args.shape, args.role, args.position, args.relative_to_id, args.group_id);
+       const res = boardBrainRef.current.drawShape(args.shape, args.position, args.label, args.relative_to_id);
        if (res) {
           addCommand(res.command);
           return { success: true, element_id: res.id };
@@ -293,7 +314,6 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
     // 3. Create Group
     if (name === 'create_group') {
         const res = boardBrainRef.current.createGroup(args.title, args.position);
-        // Groups might be purely logical, but we can visualize them with a light container
         if (res.command) addCommand(res.command);
         return { success: true, group_id: res.id };
     }
@@ -309,19 +329,28 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
         return { success: false, error: "Could not connect elements (ids not found)" };
     }
 
-    // 5. Draw Graph
-    if (name === 'draw_graph') {
-       const res = boardBrainRef.current.drawGraph(args.title, args.equation, args.position, args.relative_to_id);
+    // 5. Draw Graph (Multi-Function)
+    if (name === 'plot_functions') {
+       const res = boardBrainRef.current.drawGraph(args.title, args.equations, args.position, args.relative_to_id);
        res.commands.forEach(addCommand);
        return { success: true, graph_id: res.id };
     }
 
-    // 6. Inspection
-    if (name === 'inspect_board') {
-       return boardBrainRef.current.getStateDescription();
+    // 6. Tree Layout
+    if (name === 'draw_tree') {
+       const res = boardBrainRef.current.drawTree(args.root, args.position);
+       res.commands.forEach(addCommand);
+       return { success: true, tree_id: res.id };
     }
 
-    // 7. Board Management
+    // 7. Timeline Layout
+    if (name === 'draw_timeline') {
+       const res = boardBrainRef.current.drawTimeline(args.events, args.position);
+       res.commands.forEach(addCommand);
+       return { success: true, timeline_id: res.id };
+    }
+
+    // 8. Board Management
     if (name === 'create_new_board') {
       const newId = `board-${Date.now()}`;
       setBoards(prev => [...prev, { id: newId, commands: [], lastSaved: Date.now(), gridActive: false }]);
@@ -332,7 +361,7 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
       return `created board ${newId}`;
     }
 
-    // 8. Utility
+    // 9. Utility
     if (name === 'toggle_grid') {
        const isVisible = args.visible;
        setBoards(prev => prev.map(b => {
@@ -368,6 +397,12 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
       setConnectionState(ConnectionState.DISCONNECTED);
       setRetryCount(3);
       return;
+    }
+
+    // Network Check
+    if (!navigator.onLine) {
+        setErrorMsg("No internet connection. Please check your network.");
+        return;
     }
 
     if (!apiKey) {
@@ -414,9 +449,9 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
             }, 4000); 
           }
         }, 
-        user,
-        boardDims,
-        { 
+        {
+            user,
+            boardDims,
             topic: session.topic, 
             pdfBase64: session.pdfContext,
             isReconnect: isReconnect
@@ -551,6 +586,7 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
                 userTool={userTool}
                 onUserDraw={handleUserDraw}
                 showGrid={getActiveBoard().gridActive ?? false} // Defaults to false
+                subject={getActiveBoard().subject}
                 laserPoint={currentLaserPoint}
               />
 

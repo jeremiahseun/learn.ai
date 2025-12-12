@@ -4,6 +4,20 @@ export interface Point {
   y: number;
 }
 
+export type Subject = 'math' | 'science' | 'history' | 'literature' | 'general';
+export type GridType = 'lines' | 'dots' | 'cross' | 'none';
+
+export interface SubjectTheme {
+  name: Subject;
+  background: string;
+  gridType: GridType;
+  gridColor: string;
+  primaryColor: string; // For titles/emphasis
+  secondaryColor: string; // For body text
+  accentColor: string; // For highlights/graphs
+  fontFamily: string;
+}
+
 export interface DrawStrokePayload {
   points: Point[];
   color: string;
@@ -18,6 +32,7 @@ export interface WriteTextPayload {
   size?: number;
   align?: 'left' | 'center' | 'right';
   maxWidth?: number;
+  fontStyle?: 'normal' | 'italic' | 'bold';
 }
 
 export interface DrawCirclePayload {
@@ -33,6 +48,7 @@ export interface DrawRectPayload {
   width: number;
   height: number;
   color: string;
+  fill?: string; // Added fill support
 }
 
 export interface DrawLinePayload {
@@ -42,9 +58,8 @@ export interface DrawLinePayload {
   y2: number;
   color: string;
   width?: number;
+  dashed?: boolean; // Added dash support
 }
-
-// --- New Types ---
 
 export interface ErasePayload {
   targetId: string;
@@ -64,6 +79,7 @@ export interface DrawArrowPayload {
   y2: number;
   color: string;
   width?: number;
+  label?: string;
 }
 
 export interface InsertImagePayload {
@@ -71,12 +87,12 @@ export interface InsertImagePayload {
   y: number;
   width: number;
   height: number;
-  dataUrl: string; // or url
+  dataUrl: string;
   alt?: string;
 }
 
 export interface PlaySoundPayload {
-  sound: string; // 'bell', 'correct', 'history_quote', etc.
+  sound: string;
   caption?: string;
 }
 
@@ -106,7 +122,7 @@ export interface HighlightPayload {
   y: number;
   width: number;
   height: number;
-  color: string; // Should be rendered with transparency
+  color: string;
 }
 
 export interface FreehandPayload {
@@ -122,7 +138,7 @@ export interface DrawPolygonPayload {
 }
 
 export interface DrawPathPayload {
-  pathData: string; // SVG path string
+  pathData: string;
   color: string;
   width?: number;
 }
@@ -180,9 +196,10 @@ export interface LaserPointerPayload {
 export interface BoardData {
   id: string;
   commands: BoardCommand[];
-  thumbnail?: string; // Data URL
-  lastSaved?: number; // Timestamp
-  gridActive?: boolean; // New: Board-specific grid state
+  thumbnail?: string;
+  lastSaved?: number;
+  gridActive?: boolean;
+  subject?: Subject; // New: Persist subject per board
 }
 
 export type BoardCommand = 
@@ -246,26 +263,44 @@ export interface Session {
   lastAccessed: number;
   createdAt: number;
   topic?: string;
-  pdfContext?: string; // Base64 of PDF, ephemeral (not saved to localStorage if too big)
+  pdfContext?: string;
 }
 
 // --- Board Brain Semantic Types ---
 
-export type SemanticRole = 'title' | 'heading' | 'body' | 'example' | 'note' | 'container' | 'connector' | 'label' | 'group-title';
+export type LayoutMode = 'standard' | 'split-view' | 'mind-map' | 'timeline';
+
+export type SemanticRole = 
+  | 'title' 
+  | 'heading' 
+  | 'subheading'
+  | 'body' 
+  | 'bullet'
+  | 'equation'
+  | 'example' 
+  | 'note' 
+  | 'container' 
+  | 'connector' 
+  | 'label' 
+  | 'group-title'
+  | 'tree-node'; // New role
+
+export type BoardZone = 'header' | 'main' | 'sidebar' | 'footer' | 'floating';
+
 export type SemanticPosition = 
-  | 'top-center' | 'top-left' | 'top-right' 
-  | 'center' 
-  | 'left' | 'right' 
-  | 'bottom-center' | 'bottom-left' | 'bottom-right' 
-  | 'below' | 'right-of' | 'left-of'
-  | 'below-left' | 'below-right'; // For trees
+  | 'auto'
+  | 'new-column'
+  | 'aside'
+  | 'below'
+  | 'indent';
 
 export interface BrainElement {
   id: string;
   role: SemanticRole;
   bbox: { x: number, y: number, w: number, h: number };
-  refId?: string; // For relative positioning
-  groupId?: string; // Belonging to a logical group
+  zone: BoardZone;
+  refId?: string;
+  groupId?: string;
   text?: string;
 }
 
@@ -273,4 +308,17 @@ export interface BrainGroup {
   id: string;
   title: string;
   bbox: { x: number, y: number, w: number, h: number };
+}
+
+// Complex Data Structures for advanced tools
+export interface TreeNode {
+  id: string;
+  label: string;
+  children?: TreeNode[];
+}
+
+export interface TimelineEvent {
+  year: string | number;
+  label: string;
+  detail?: string;
 }

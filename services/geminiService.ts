@@ -39,12 +39,18 @@ export class GeminiLiveClient {
 
   async connect(
     callbacks: LiveClientCallbacks, 
-    userProfile: StudentProfile,
-    boardDims: { width: number, height: number },
-    context?: { topic?: string, pdfBase64?: string, isReconnect?: boolean }
+    config: {
+      user: StudentProfile,
+      boardDims: { width: number, height: number },
+      topic?: string,
+      pdfBase64?: string,
+      isReconnect?: boolean
+    }
   ) {
+    const { user, boardDims, topic, pdfBase64, isReconnect } = config;
+
     console.log("[GeminiService] Initializing connection flow...");
-    this.isReconnecting = !!context?.isReconnect;
+    this.isReconnecting = !!isReconnect;
     
     // 1. Initialize Audio Contexts IMMEDIATELY (User Gesture Context)
     const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
@@ -92,22 +98,22 @@ export class GeminiLiveClient {
     this.scheduledSources = [];
 
     // 3. Build System Instruction with Dimensions and Context
-    let finalSystemInstruction = getSystemInstruction(userProfile, boardDims.width, boardDims.height);
+    let finalSystemInstruction = getSystemInstruction(user, boardDims.width, boardDims.height);
     
-    if (context?.isReconnect) {
-      finalSystemInstruction += `\n\n**CRITICAL: NETWORK RECOVERY MODE**\nSTATUS: The connection was lost and restored.\nACTION: The previous board state is potentially lost or overlapping. CALL \`create_new_board\` IMMEDIATELY as your first action.\nCONTEXT: We were discussing "${context.topic || 'the previous topic'}". Briefly recap the last point and continue on the new board.`;
-    } else if (context?.topic) {
-      finalSystemInstruction += `\n\n**SESSION CONTEXT:**\nThe user wants to learn about: "${context.topic}".\n\n**PROTOCOL:**\n1. Greet the user briefly and confirm the topic.\n2. **STOP** and wait for the user to speak or ask a question.\n3. DO NOT start teaching, lecturing, or drawing immediately. Let the user lead the start of the conversation.`;
+    if (isReconnect) {
+      finalSystemInstruction += `\n\n**CRITICAL: NETWORK RECOVERY MODE**\nSTATUS: The connection was lost and restored.\nACTION: The previous board state is potentially lost or overlapping. CALL \`create_new_board\` IMMEDIATELY as your first action.\nCONTEXT: We were discussing "${topic || 'the previous topic'}". Briefly recap the last point and continue on the new board.`;
+    } else if (topic) {
+      finalSystemInstruction += `\n\n**SESSION CONTEXT:**\nThe user wants to learn about: "${topic}".\n\n**PROTOCOL:**\n1. Greet the user briefly and confirm the topic.\n2. **STOP** and wait for the user to speak or ask a question.\n3. DO NOT start teaching, lecturing, or drawing immediately. Let the user lead the start of the conversation.`;
     } else {
       finalSystemInstruction += `\n\n**PROTOCOL:**\nGreet the user and ask what they would like to learn today. Wait for their response.`;
     }
     
-    if (context?.pdfBase64) {
+    if (pdfBase64) {
        finalSystemInstruction += `\n\n**REFERENCE MATERIAL:**\nThe user has provided a PDF document. Acknowledge this and ask the user how they would like to use it (e.g., summarize it, quiz them, etc).`;
     }
 
     // 4. Configure Live API
-    const config = {
+    const liveConfig = {
       systemInstruction: { parts: [{ text: finalSystemInstruction }] },
       tools: [{ functionDeclarations: TOOLS_DECLARATION }],
       responseModalities: [Modality.AUDIO],
@@ -124,7 +130,7 @@ export class GeminiLiveClient {
     try {
       this.sessionPromise = this.client.live.connect({
         model: MODEL_LIVE,
-        config,
+        config: liveConfig,
         callbacks: {
           onopen: async () => {
             console.log("[GeminiService] Session Opened");
