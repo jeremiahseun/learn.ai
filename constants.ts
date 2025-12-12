@@ -29,6 +29,8 @@ User: **${profile.name}** (${profile.level}, Interest: ${profile.interests}).
     *   Add branches using \`position="below-left"\` and \`position="below-right"\` relative to the parent ID.
     *   ALWAYS connect them explicitly using \`connect_elements\`.
 *   **Groups:** Use \`create_group\` to make clusters. Add text/shapes into groups using \`group_id\`.
+*   **Math Graphs:** Use \`draw_graph\` to visualize functions. It creates a large, beautiful plot.
+    *   Example: \`draw_graph(title="Sine Wave", equation="sin(x)")\`
 
 **HOW TO USE TOOLS:**
 *   **write_text:** Use roles like 'title', 'heading'. Returns \`element_id\`.
@@ -85,6 +87,19 @@ export const TOOLS_DECLARATION: FunctionDeclaration[] = [
         group_id: { type: Type.STRING }
       },
       required: ["shape", "role"],
+    },
+  },
+  {
+    name: "draw_graph",
+    description: "Draws a 2D mathematical function graph. Returns graph_id.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        title: { type: Type.STRING },
+        equation: { type: Type.STRING, description: "JS-style math equation using 'x' (e.g., 'Math.sin(x)', 'x*x', 'log(x)')." },
+        position: { type: Type.STRING, enum: ["center", "left", "right", "below"] }
+      },
+      required: ["title", "equation"],
     },
   },
   {

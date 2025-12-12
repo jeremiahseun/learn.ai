@@ -309,12 +309,19 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
         return { success: false, error: "Could not connect elements (ids not found)" };
     }
 
-    // 5. Inspection
+    // 5. Draw Graph
+    if (name === 'draw_graph') {
+       const res = boardBrainRef.current.drawGraph(args.title, args.equation, args.position, args.relative_to_id);
+       res.commands.forEach(addCommand);
+       return { success: true, graph_id: res.id };
+    }
+
+    // 6. Inspection
     if (name === 'inspect_board') {
        return boardBrainRef.current.getStateDescription();
     }
 
-    // 6. Board Management
+    // 7. Board Management
     if (name === 'create_new_board') {
       const newId = `board-${Date.now()}`;
       setBoards(prev => [...prev, { id: newId, commands: [], lastSaved: Date.now(), gridActive: false }]);
@@ -325,7 +332,7 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
       return `created board ${newId}`;
     }
 
-    // 7. Utility
+    // 8. Utility
     if (name === 'toggle_grid') {
        const isVisible = args.visible;
        setBoards(prev => prev.map(b => {

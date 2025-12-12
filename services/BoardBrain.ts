@@ -110,6 +110,118 @@ export class BoardBrain {
       return { command, id };
   }
 
+  public drawGraph(title: string, equation: string, position: SemanticPosition = 'center', relativeToId?: string): { commands: BoardCommand[], id: string } {
+    // 1. Size - Big Graphs as requested
+    const w = 600;
+    const h = 400;
+
+    // 2. Position
+    const bbox = this.findSpace({ w, h }, position, relativeToId, 'container');
+    
+    // 3. Register
+    const id = `graph_${++this.elementCounter}`;
+    this.elements.push({ id, role: 'container', bbox, groupId: undefined, refId: relativeToId });
+    this.lastElementId = id;
+    this.currentY = Math.max(this.currentY, bbox.y + bbox.h + 40);
+
+    const commands: BoardCommand[] = [];
+
+    // 4. Background (Dark Panel)
+    commands.push({
+        type: 'polygon',
+        payload: {
+            points: [{x:bbox.x, y:bbox.y}, {x:bbox.x+w, y:bbox.y}, {x:bbox.x+w, y:bbox.y+h}, {x:bbox.x, y:bbox.y+h}],
+            color: '#334155',
+            fill: '#0f172a'
+        }
+    });
+
+    // 5. Title
+    commands.push({
+        type: 'text',
+        payload: { text: title, x: bbox.x + 20, y: bbox.y + 20, color: '#94a3b8', size: 20, align: 'left' }
+    });
+
+    // 6. Data Calculation
+    // Default range [-10, 10]
+    const rangeX = [-10, 10];
+    const points: {x: number, y: number}[] = [];
+    const step = (rangeX[1] - rangeX[0]) / 100;
+    
+    let minY = Infinity, maxY = -Infinity;
+    
+    for(let x = rangeX[0]; x <= rangeX[1]; x += step) {
+        const y = this.evaluateEquation(equation, x);
+        if (!isNaN(y) && isFinite(y)) {
+             points.push({x, y});
+             if (y < minY) minY = y;
+             if (y > maxY) maxY = y;
+        }
+    }
+    
+    // Auto-scale Y with padding
+    const ySpan = Math.max(0.1, maxY - minY);
+    minY -= ySpan * 0.1;
+    maxY += ySpan * 0.1;
+
+    // Coordinate mapping functions
+    const mapX = (val: number) => bbox.x + 40 + ((val - rangeX[0]) / (rangeX[1] - rangeX[0])) * (w - 80);
+    const mapY = (val: number) => (bbox.y + h - 40) - ((val - minY) / (maxY - minY)) * (h - 80);
+
+    // 7. Grid & Axes
+    // X Axis (y=0)
+    if (minY <= 0 && maxY >= 0) {
+        const y0 = mapY(0);
+        commands.push({ type: 'line', payload: { x1: bbox.x+40, y1: y0, x2: bbox.x+w-40, y2: y0, color: '#475569', width: 2 } });
+    }
+    // Y Axis (x=0)
+    if (rangeX[0] <= 0 && rangeX[1] >= 0) {
+        const x0 = mapX(0);
+        commands.push({ type: 'line', payload: { x1: x0, y1: bbox.y+40, x2: x0, y2: bbox.y+h-40, color: '#475569', width: 2 } });
+    }
+
+    // 8. Draw Curve
+    const screenPoints = points.map(p => ({ x: mapX(p.x), y: mapY(p.y) }));
+    if (screenPoints.length > 1) {
+        commands.push({
+            type: 'stroke',
+            payload: {
+                points: screenPoints,
+                color: '#22d3ee', // Cyan curve
+                width: 3
+            }
+        });
+    }
+
+    // 9. Equation Label
+    commands.push({
+        type: 'text',
+        payload: { text: `f(x) = ${equation}`, x: bbox.x + w - 20, y: bbox.y + 20, color: '#22d3ee', size: 18, align: 'right' }
+    });
+
+    return { id, commands };
+  }
+
+  private evaluateEquation(eq: string, x: number): number {
+      try {
+          // Allow simplified math input (e.g. "sin(x)" instead of "Math.sin(x)")
+          const sanitized = eq.toLowerCase()
+              .replace(/\bsin\b/g, 'Math.sin')
+              .replace(/\bcos\b/g, 'Math.cos')
+              .replace(/\btan\b/g, 'Math.tan')
+              .replace(/\bsqrt\b/g, 'Math.sqrt')
+              .replace(/\blog\b/g, 'Math.log')
+              .replace(/\babs\b/g, 'Math.abs')
+              .replace(/\bpi\b/g, 'Math.PI')
+              .replace(/\^/g, '**'); 
+          
+          const f = new Function('x', `return ${sanitized};`);
+          return f(x);
+      } catch (e) {
+          return 0;
+      }
+  }
+
   public writeText(text: string, role: SemanticRole, position: SemanticPosition = 'below', relativeToId?: string, groupId?: string): { command: BoardCommand, id: string } {
     let style = STYLES[role as keyof typeof STYLES] || STYLES.body;
     if (!('size' in style)) style = STYLES.body;
