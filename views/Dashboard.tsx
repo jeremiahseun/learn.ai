@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Plus, Clock, BookOpen, LogOut, ArrowRight, Trash2, Sparkles } from 'lucide-react';
 import Logo from '../components/Logo';
@@ -60,7 +59,7 @@ const Dashboard: React.FC<DashboardProps> = ({
               <h1 className="text-3xl font-bold mb-2">Welcome back, {user.name.split(' ')[0]}</h1>
               <p className="text-slate-400 flex items-center gap-2">
                  <Sparkles size={14} className="text-cyan-400" />
-                 Ready to continue your learning journey?
+                 Ready to enter your flow state?
               </p>
             </div>
             <button 
@@ -68,12 +67,12 @@ const Dashboard: React.FC<DashboardProps> = ({
               className="flex items-center justify-center gap-2 bg-cyan-500 hover:bg-cyan-400 text-black font-bold px-6 py-3 rounded-xl shadow-[0_0_20px_rgba(34,211,238,0.3)] transition-all hover:scale-105"
             >
               <Plus size={20} />
-              New Session
+              New Flow
             </button>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-             {/* New Session Card (Quick Access) */}
+             {/* New Flow Card (Quick Access) */}
              <div 
                onClick={() => setIsNewSessionModalOpen(true)}
                className="group cursor-pointer border border-dashed border-white/10 rounded-2xl p-8 flex flex-col items-center justify-center text-slate-500 hover:text-cyan-400 hover:border-cyan-500/50 hover:bg-cyan-950/10 transition-all min-h-[220px]"
@@ -81,10 +80,10 @@ const Dashboard: React.FC<DashboardProps> = ({
                <div className="w-14 h-14 rounded-full bg-white/5 group-hover:bg-cyan-500/20 flex items-center justify-center mb-4 transition-colors">
                  <Plus className="group-hover:text-cyan-400" size={24} />
                </div>
-               <span className="font-semibold tracking-wide">Start a blank session</span>
+               <span className="font-semibold tracking-wide">Start a blank flow</span>
              </div>
 
-             {/* Session List */}
+             {/* Flow List */}
              {sessions.map(session => (
                <div 
                  key={session.id}
@@ -109,7 +108,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                     
                     <h3 className="text-xl font-bold text-white mb-2 line-clamp-1 group-hover:text-cyan-400 transition-colors">{session.title}</h3>
                     <p className="text-sm text-slate-400 line-clamp-2 mb-4">
-                      {session.boards.length} board{session.boards.length !== 1 && 's'} • {session.topic || 'General Topic'}
+                      {session.boards.length} canvas pages • {session.topic || 'General Flow'}
                     </p>
                  </div>
                  
@@ -128,7 +127,7 @@ const Dashboard: React.FC<DashboardProps> = ({
           
           {sessions.length === 0 && (
             <div className="text-center mt-20 text-slate-500">
-              <p>You haven't created any sessions yet.</p>
+              <p>Your history is empty. Start a new flow to begin.</p>
             </div>
           )}
        </main>

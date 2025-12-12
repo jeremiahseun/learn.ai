@@ -17,7 +17,7 @@ app.use('*', cors())
 // --- Routes ---
 app.get('/', (c) => c.json({ 
   status: 'ok', 
-  service: 'Learn.ai Backend',
+  service: 'Dewon Backend',
   version: '1.0.0' 
 }))
 

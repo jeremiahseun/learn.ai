@@ -3,7 +3,7 @@ import React from 'react';
 interface AudioPulseProps {
   active: boolean;
   volume: number; // 0 to 1
-  color: 'blue' | 'purple' | 'red';
+  color: 'blue' | 'purple' | 'red' | 'cyan';
   label?: string;
 }
 
@@ -17,6 +17,7 @@ const AudioPulse: React.FC<AudioPulseProps> = ({ active, volume, color, label })
       case 'purple': return 'bg-purple-500';
       case 'red': return 'bg-red-500';
       case 'blue': return 'bg-blue-500';
+      case 'cyan': return 'bg-cyan-500';
       default: return 'bg-slate-500';
     }
   };
@@ -26,6 +27,7 @@ const AudioPulse: React.FC<AudioPulseProps> = ({ active, volume, color, label })
       case 'purple': return 'shadow-[0_0_10px_rgba(168,85,247,0.5)]';
       case 'red': return 'shadow-[0_0_10px_rgba(239,68,68,0.5)]';
       case 'blue': return 'shadow-[0_0_10px_rgba(59,130,246,0.5)]';
+      case 'cyan': return 'shadow-[0_0_10px_rgba(34,211,238,0.5)]';
       default: return '';
     }
   };

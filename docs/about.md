@@ -1,83 +1,62 @@
-# About Learn.ai
+# About Dewon
 
-> **"The moment it finally clicks."**
+> **"Stop studying. Start flowing."**
 
-**Learn.ai** is a next-generation educational platform that bridges the gap between passive video tutorials and expensive private tutors. It uses multimodal AI to create a **real-time, collaborative, and visual** learning experience that feels like sitting next to a world-class teacher.
+**Dewon** (pronounced *Dew-on*) is not just another AI tutor. It is a **Liquid Intelligence Engine** designed to cure the isolation and confusion of modern self-education.
 
----
-
-## 1. The Mission
-We believe great education shouldn't be a luxury. Traditional learning resources often fail because they are:
-*   **Static:** You can't ask a YouTube video "Why?"
-*   **Expensive:** Private tutors cost $60+/hr.
-*   **Judgmental:** Students are afraid to ask "stupid" questions.
-
-**Learn.ai solves this by providing an AI tutor that:**
-1.  **Listens** to your voice in real-time.
-2.  **Draws** diagrams, equations, and mind maps on a shared whiteboard while explaining.
-3.  **Adapts** to your specific confusion, offering infinite patience without judgment.
+We are building this because we believe that **confusion is painful**, and clarity should be immediate.
 
 ---
 
-## 2. Core Experience: The "Board Brain"
+## 1. What is Dewon?
 
-Unlike standard chatbots that output text, Learn.ai is built on a **Spatial & Visual Engine**.
+Dewon is an **Early Access** educational platform that pairs you with **Dew**, a visual AI companion. 
 
-*   **Voice-First Interface:** Powered by **Gemini Live**, users talk naturally. Interruptions, tangents, and "aha!" moments are handled instantly (<500ms latency).
-*   **Semantic Whiteboard:** The AI doesn't just "generate images." It understands the **semantics** of the board. It knows that *Box A* is connected to *Box B* via a *Cause-and-Effect* arrow.
-*   **Deep Thinking Mode:** For complex STEM problems (Calculus, Physics, Logic), the system switches to a "Thinking Model" (Gemini 2.5/3.0 Pro) to reason through steps before drawing.
-*   **Vision Context:** The AI "sees" what is on the board. If a user sketches a rough triangle, the AI can recognize it and calculate the hypotenuse.
+Unlike ChatGPT or traditional chatbots that simply spit out text, Dew functions like a brilliant professor sitting next to you with a blank piece of paper.
 
----
-
-## 3. Brand Identity & Design System
-
-The Learn.ai brand blends **Futuristic Precision** with **Human Warmth**.
-
-### A. Color Palette
-We use a dark, high-contrast theme to reduce eye strain and make colored diagrams pop.
-
-| Role | Color Name | Hex | Usage |
-| :--- | :--- | :--- | :--- |
-| **Background** | Slate 950 | `#020617` | Deep space background. |
-| **Primary** | Cyan 400 | `#22d3ee` | Call-to-actions, primary highlights, "The AI". |
-| **Secondary** | Purple 500 | `#8b5cf6` | Deep thinking, creative modes. |
-| **Success** | Green 400 | `#4ade80` | Correct answers, user strokes. |
-| **Accent** | Pink 400 | `#f472b6` | Connectors, relationships. |
-| **Text** | Slate 100 | `#f1f5f9` | Primary readability. |
-
-### B. Typography
-*   **UI Font:** `Inter` (Clean, modern, highly legible).
-*   **Handwriting Font:** `Kalam` (Used on the whiteboard to simulate a human teacher's handwriting).
-
-### C. Visual Style: "Holo-Glass"
-*   **Glassmorphism:** Panels use `backdrop-filter: blur(12px)` with thin, translucent borders (`border-white/10`).
-*   **Glow Effects:** Buttons and active elements have subtle outer glows (`shadow-[0_0_20px_rgba(34,211,238,0.3)]`) to simulate neon or holographic projections.
-*   **Motion:** Elements **float**, **pulse**, and **spin** slowly to create a living, breathing interface.
+### The Core Loop:
+1.  **You Speak:** You talk to Dew naturally. You can vent, stumble over words, or ask vague questions like *"I don't get this physics concept."*
+2.  **Dew Listens:** Using advanced audio processing (Gemini Live), Dew captures not just your words, but your tone and hesitation.
+3.  **Dew Draws:** This is the magic. Dew creates **The Canvas**—a real-time, shared whiteboard where it draws diagrams, flowcharts, and mind maps to visualize the answer.
+4.  **You Flow:** The conversation adapts. If you say *"Wait, go back,"* Dew erases and redraws. If you say *"Give me an example,"* a new branch appears on the tree.
 
 ---
 
-## 4. Feature Set
+## 2. Why We Are Building This
 
-### 🎓 For the Student
-*   **Infinite Whiteboard:** A canvas that grows with the lesson.
-*   **PDF Context:** Upload a textbook chapter or homework sheet; the AI reads it instantly and references it during the lesson.
-*   **Snapshot Export:** Download high-res images of the board state to study later.
+The current state of learning is broken:
+*   **Video Tutorials are Passive:** You watch for 20 minutes, zone out, and retain nothing. You cannot ask a video "Why?"
+*   **Textbooks are Dry:** They are dense walls of text that offer no feedback.
+*   **Private Tutors are Inaccessible:** They cost hundreds of dollars and aren't available at 2 AM when you are stuck.
 
-### 🧠 The AI Persona ("OmniTutor")
-*   **Storyteller:** Uses analogies (e.g., explaining voltage as "water pressure").
-*   **Socratic:** Asks guiding questions rather than just giving answers.
-*   **Visual Thinker:** "Let me draw that out for you" is its catchphrase.
+**Dewon is the solution.** It is always on, infinite in patience, and visual by default. It turns the "solid" wall of information into "liquid" knowledge that flows into your mind.
 
 ---
 
-## 5. Technical Architecture
+## 3. Brand Identity: "Liquid Clarity"
 
-*   **Frontend:** React 19, Tailwind CSS, HTML5 Canvas.
-*   **Backend:** Cloudflare Workers (Hono), Supabase (PostgreSQL, Auth).
-*   **AI Engine:** Google GenAI SDK (Gemini 2.5 Flash for Live Audio, Gemini 3 Pro for Reasoning).
-*   **Protocol:** WebTransport / WebSocket for low-latency audio streaming.
+Our design philosophy is **Illuminated Clarity**. We reject the cluttered, white-and-gray SaaS aesthetic in favor of a deep, immersive environment that feels like a "Flow State."
+
+### Visual Language
+*   **Deep Space:** Backgrounds are Slate-950 (`#020617`), simulating the quiet of deep thought.
+*   **Bioluminescence:** Active elements glow with Cyan-400 (`#22d3ee`), like thoughts firing in a neural network.
+*   **Glass & Water:** Panels are translucent. Animations are fluid and organic, never mechanical.
+
+### The Persona: "Dew"
+Dew is:
+*   **Patient:** Never judges you for asking the same question twice.
+*   **Visual:** Prefers to show, not just tell.
+*   **Calm:** Speaks concisely and warmly.
 
 ---
 
-*Built for the future of education.*
+## 4. Current Status: Early Access
+
+Dewon is currently in a **Public Beta**.
+*   **No Pricing:** We are not charging users during this phase. We want feedback, not credit cards.
+*   **Waitlist:** Access is rolled out in waves to ensure server stability.
+*   **Feature Set:** The core "Voice + Canvas" loop is live. Advanced features like "Deep Synthesis" (Math reasoning) are available for testing.
+
+---
+
+*Built for the curious. Built for the frustrated. Built for you.*

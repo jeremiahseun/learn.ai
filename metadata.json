@@ -1,6 +1,6 @@
 {
-  "name": "Learn.ai",
-  "description": "Your personal AI tutor with a real-time collaborative whiteboard.",
+  "name": "Dewon",
+  "description": "Just flow. Your personal AI companion for liquid clarity.",
   "requestFramePermissions": [
     "microphone"
   ]

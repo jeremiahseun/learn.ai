@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { X, BookOpen, FileText, Upload, Sparkles } from 'lucide-react';
 
@@ -40,7 +39,7 @@ const NewSessionModal: React.FC<NewSessionModalProps> = ({ isOpen, onClose, onSt
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onStart(topic || 'General Lesson', pdfBase64);
+    onStart(topic || 'General Flow', pdfBase64);
     onClose();
   };
 
@@ -53,7 +52,7 @@ const NewSessionModal: React.FC<NewSessionModalProps> = ({ isOpen, onClose, onSt
         <div className="flex items-center justify-between p-6 border-b border-slate-800">
           <h2 className="text-xl font-bold text-white flex items-center gap-2">
             <Sparkles size={20} className="text-cyan-400" />
-            Start New Session
+            Start New Flow
           </h2>
           <button onClick={onClose} className="text-slate-400 hover:text-white transition-colors">
             <X size={24} />
@@ -62,7 +61,7 @@ const NewSessionModal: React.FC<NewSessionModalProps> = ({ isOpen, onClose, onSt
 
         <form onSubmit={handleSubmit} className="p-6 space-y-6">
           <div>
-            <label className="block text-sm font-medium text-slate-400 mb-2">What do you want to learn?</label>
+            <label className="block text-sm font-medium text-slate-400 mb-2">What do you want to explore?</label>
             <div className="relative">
               <BookOpen size={18} className="absolute top-3.5 left-3 text-slate-500" />
               <input
@@ -77,7 +76,7 @@ const NewSessionModal: React.FC<NewSessionModalProps> = ({ isOpen, onClose, onSt
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-400 mb-2">Reference Material (Optional)</label>
+            <label className="block text-sm font-medium text-slate-400 mb-2">Context Material (Optional)</label>
             <div className="border-2 border-dashed border-slate-700 rounded-lg p-6 hover:border-cyan-500/50 hover:bg-slate-800/50 transition-all text-center cursor-pointer relative">
                <input 
                  type="file" 
@@ -104,7 +103,7 @@ const NewSessionModal: React.FC<NewSessionModalProps> = ({ isOpen, onClose, onSt
             disabled={isProcessing}
             className="w-full bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-bold py-3 rounded-lg shadow-lg shadow-cyan-500/20 transition-all transform hover:scale-[1.02] disabled:opacity-50 disabled:scale-100"
           >
-            {isProcessing ? 'Processing File...' : 'Enter Classroom'}
+            {isProcessing ? 'Processing File...' : 'Enter Flow'}
           </button>
         </form>
       </div>

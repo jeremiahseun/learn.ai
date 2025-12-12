@@ -30,7 +30,7 @@ const ThinkingModal: React.FC<ThinkingModalProps> = ({ isOpen, onClose }) => {
       const result = await askThinkingBrain(prompt, apiKey);
       setResponse(result);
     } catch (error) {
-      setResponse("Failed to get a response from the Thinking model.");
+      setResponse("Failed to get a response from the Deep Synthesis model.");
       console.error(error);
     } finally {
       setIsLoading(false);
@@ -43,7 +43,7 @@ const ThinkingModal: React.FC<ThinkingModalProps> = ({ isOpen, onClose }) => {
         <div className="flex items-center justify-between p-4 border-b border-slate-700">
           <div className="flex items-center space-x-2 text-purple-400">
              <BrainCircuit size={24} />
-             <h2 className="text-xl font-bold">Deep Thinking Mode</h2>
+             <h2 className="text-xl font-bold">Deep Synthesis</h2>
           </div>
           <button onClick={onClose} className="text-slate-400 hover:text-white">
             <X size={24} />
@@ -53,8 +53,8 @@ const ThinkingModal: React.FC<ThinkingModalProps> = ({ isOpen, onClose }) => {
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
            {!response && (
              <div className="text-slate-400 text-sm">
-               Use this mode for complex questions (Math, Logic, STEM) that require time to think. 
-               The result is text-only, but highly accurate.
+               Use Deep Synthesis for complex questions (Math, Logic, STEM) that require time to reason. 
+               Dew will pause to think before responding with high precision.
              </div>
            )}
 
@@ -73,15 +73,15 @@ const ThinkingModal: React.FC<ThinkingModalProps> = ({ isOpen, onClose }) => {
                 {isLoading ? (
                   <>
                     <Loader2 className="animate-spin mr-2" size={20} />
-                    Thinking... (this may take a moment)
+                    Synthesizing...
                   </>
-                ) : 'Ask Brain AI'}
+                ) : 'Ask Dew'}
               </button>
            </form>
 
            {response && (
              <div className="bg-slate-800 rounded-lg p-4 border border-slate-700 mt-4">
-               <h3 className="text-sm font-semibold text-slate-400 mb-2">Answer:</h3>
+               <h3 className="text-sm font-semibold text-slate-400 mb-2">Synthesized Answer:</h3>
                <div className="prose prose-invert max-w-none text-slate-200 whitespace-pre-wrap">
                  {response}
                </div>

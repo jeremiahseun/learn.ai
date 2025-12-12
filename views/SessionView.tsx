@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { Mic, MicOff, BrainCircuit, Info, LayoutTemplate, Volume2, ArrowLeft, User, PenTool, Eraser, MousePointer2, ChevronRight, ChevronLeft, Play, Signal, Smartphone, RotateCw, Maximize2, Minimize2, Settings, X, ChevronDown, ChevronUp, Camera, Grid3X3, FastForward, Captions } from 'lucide-react';
 import WhiteboardCanvas, { WhiteboardHandle } from '../components/WhiteboardCanvas';
@@ -445,7 +444,7 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
                 value={sessionTitle}
                 onChange={(e) => setSessionTitle(e.target.value)}
                 className="bg-transparent text-sm sm:text-base font-bold text-white focus:outline-none focus:border-b border-cyan-500 w-24 sm:w-64 placeholder-slate-500 truncate"
-                placeholder="Lesson Title"
+                placeholder="Flow Title"
               />
             </div>
           </div>
@@ -456,7 +455,7 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
           <div className="hidden xl:flex flex-none items-center space-x-4 px-6 py-1.5 bg-black/40 rounded-full border border-cyan-500/30 shadow-[0_0_15px_rgba(34,211,238,0.15)] backdrop-blur-md mx-4">
              <AudioPulse active={!isMicMuted} volume={isMicMuted ? 0 : audioLevels.input} color="blue" label="YOU" />
              <div className="h-6 w-px bg-white/10"></div>
-             <AudioPulse active={true} volume={audioLevels.output} color="purple" label="AI" />
+             <AudioPulse active={true} volume={audioLevels.output} color="cyan" label="DEW" />
           </div>
         )}
 
@@ -473,7 +472,7 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
 
                 <button
                    onClick={handleNudge}
-                   title="Nudge: Tell AI to move on"
+                   title="Nudge: Tell Dew to move on"
                    className="p-2.5 rounded-full bg-white/5 text-yellow-400 hover:bg-yellow-500/10 border border-yellow-500/30 transition-all hover:shadow-[0_0_10px_rgba(250,204,21,0.2)] flex-shrink-0"
                 >
                    <FastForward size={18} />
@@ -497,7 +496,7 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
              className="hidden md:flex items-center space-x-1 sm:space-x-2 text-xs sm:text-sm text-purple-300 hover:text-white px-3 py-2 rounded-lg hover:bg-purple-500/10 border border-transparent hover:border-purple-500/30 transition-all flex-shrink-0"
            >
              <BrainCircuit size={16} />
-             <span>Deep Think</span>
+             <span>Deep Synthesis</span>
            </button>
 
            <button 
@@ -515,7 +514,7 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
              {connectionState === ConnectionState.CONNECTED ? <Volume2 size={16} /> : <Mic size={16} />}
              <span className="hidden sm:inline">
                {connectionState === ConnectionState.CONNECTED 
-                  ? 'End Session' 
+                  ? 'End Flow' 
                   : (connectionState === ConnectionState.CONNECTING || (connectionState === ConnectionState.ERROR && retryCount > 0))
                     ? (retryCount > 0 ? 'Reconnecting...' : 'Connecting...') 
                     : 'Connect'}
@@ -638,9 +637,9 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
                           >
                              <Mic size={48} />
                           </button>
-                          <h2 className="text-3xl font-bold text-white mb-3">Ready to Learn?</h2>
-                          <p className="text-slate-400 mb-6">Topic: <span className="text-cyan-400">{session.topic || "General Discussion"}</span></p>
-                          <p className="text-slate-500 text-sm max-w-sm mx-auto">Click the button to connect to the Live AI Tutor. The AI will start by introducing the topic.</p>
+                          <h2 className="text-3xl font-bold text-white mb-3">Ready to Flow?</h2>
+                          <p className="text-slate-400 mb-6">Topic: <span className="text-cyan-400">{session.topic || "General Flow"}</span></p>
+                          <p className="text-slate-500 text-sm max-w-sm mx-auto">Click the button to connect to Dew. The liquid clarity engine will start by introducing the topic.</p>
                        </div>
                     </div>
                 </div>

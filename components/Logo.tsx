@@ -1,5 +1,5 @@
 import React from 'react';
-import { Sparkles } from 'lucide-react';
+import { Droplets } from 'lucide-react';
 
 interface LogoProps {
   className?: string;
@@ -22,15 +22,15 @@ const Logo: React.FC<LogoProps> = ({ className = '', size = 'md' }) => {
   };
 
   return (
-    <div className={`flex items-center gap-2 font-bold tracking-tight ${sizeClasses[size]} ${className}`}>
+    <div className={`flex items-center gap-2 font-bold tracking-tight ${sizeClasses[size]} ${className} group`}>
       <div className="relative flex items-center justify-center">
-        <div className={`absolute inset-0 bg-blue-500 blur-lg opacity-50 rounded-full animate-pulse`}></div>
-        <div className="relative bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl p-1.5 shadow-xl border border-blue-400/30">
-          <Sparkles size={iconSizes[size]} className="text-white fill-blue-100" />
+        <div className={`absolute inset-0 bg-cyan-400 blur-lg opacity-40 group-hover:opacity-60 transition-opacity rounded-full`}></div>
+        <div className="relative z-10">
+          <Droplets size={iconSizes[size]} className="text-cyan-400 fill-cyan-400/20" />
         </div>
       </div>
-      <span className="bg-clip-text text-transparent bg-gradient-to-r from-white via-blue-100 to-blue-200">
-        Learn<span className="text-blue-500">.ai</span>
+      <span className="font-sans text-white tracking-tight">
+        dewon
       </span>
     </div>
   );
