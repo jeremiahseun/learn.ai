@@ -1,7 +1,7 @@
 
 import { GoogleGenAI, LiveServerMessage, Modality } from "@google/genai";
 import { MODEL_LIVE, MODEL_THINKING, TOOLS_DECLARATION, getSystemInstruction } from "../constants";
-import { arrayBufferToBase64, decodeAudioData, float32ToPCM16, base64ToUint8Array } from "./audioUtils";
+import { arrayBufferToBase64, decodeAudioData, float32ToPCM16, base64ToUint8Array, downsampleTo16k } from "./audioUtils";
 import { StudentProfile } from "../types";
 
 interface LiveClientCallbacks {
@@ -51,7 +51,7 @@ export class GeminiLiveClient {
     
     try {
       this.inputAudioContext = new AudioContextClass({ sampleRate: 16000 });
-      console.log("[GeminiService] Input AudioContext created");
+      console.log(`[GeminiService] Input AudioContext created at ${this.inputAudioContext.sampleRate}Hz`);
     } catch (e) {
       console.warn("[GeminiService] Could not set sampleRate for input context, falling back to default");
       this.inputAudioContext = new AudioContextClass();
@@ -95,7 +95,6 @@ export class GeminiLiveClient {
     let finalSystemInstruction = getSystemInstruction(userProfile, boardDims.width, boardDims.height);
     
     if (context?.isReconnect) {
-      // STRONG RESUME INSTRUCTION: FORCE NEW BOARD
       finalSystemInstruction += `\n\n**CRITICAL: NETWORK RECOVERY MODE**\nSTATUS: The connection was lost and restored.\nACTION: The previous board state is potentially lost or overlapping. CALL \`create_new_board\` IMMEDIATELY as your first action.\nCONTEXT: We were discussing "${context.topic || 'the previous topic'}". Briefly recap the last point and continue on the new board.`;
     } else if (context?.topic) {
       finalSystemInstruction += `\n\n**SESSION CONTEXT:**\nThe user wants to learn about: "${context.topic}".\n\n**PROTOCOL:**\n1. Greet the user briefly and confirm the topic.\n2. **STOP** and wait for the user to speak or ask a question.\n3. DO NOT start teaching, lecturing, or drawing immediately. Let the user lead the start of the conversation.`;
@@ -115,13 +114,12 @@ export class GeminiLiveClient {
       speechConfig: {
         voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Puck' } },
       },
-      // Enable real-time transcription of the model's audio output
       outputAudioTranscription: {}, 
     };
 
     // 5. Connect to Websocket
     console.log("[GeminiService] Connecting to Gemini Live API...");
-    this.isActive = true; // Set active before connecting to allow callbacks to function
+    // NOTE: We do NOT set isActive = true here. We wait for onopen.
     
     try {
       this.sessionPromise = this.client.live.connect({
@@ -130,6 +128,7 @@ export class GeminiLiveClient {
         callbacks: {
           onopen: async () => {
             console.log("[GeminiService] Session Opened");
+            this.isActive = true; // START SENDING AUDIO NOW
             this.isReconnecting = false;
           },
           onmessage: async (message: LiveServerMessage) => {
@@ -162,7 +161,6 @@ export class GeminiLiveClient {
               for (const fc of toolCall.functionCalls) {
                 console.log("[GeminiService] Tool call received:", fc.name, fc.args);
                 try {
-                  // Execute the tool on the frontend (draw)
                   const result = await callbacks.onToolCall(fc.name, fc.args);
                   functionResponses.push({
                     id: fc.id,
@@ -179,7 +177,6 @@ export class GeminiLiveClient {
                 }
               }
               
-              // Send response back to model
               if (functionResponses.length > 0 && this.sessionPromise && this.isActive) {
                  console.log("[GeminiService] Sending tool response back to model");
                  this.sessionPromise.then(session => {
@@ -205,7 +202,6 @@ export class GeminiLiveClient {
           },
           onerror: (err) => {
             console.error("[GeminiService] Session Error", err);
-            // Ignore internal errors if we are reconnecting or cleaning up
             if (this.isReconnecting && err.message.includes("Internal error")) {
                 return;
             }
@@ -228,20 +224,6 @@ export class GeminiLiveClient {
     }
   }
 
-  // --- NEW: Method to send text messages (interruptions/nudges) ---
-  async sendText(text: string) {
-    if (!this.sessionPromise || !this.isActive) return;
-    try {
-      const session = await this.sessionPromise;
-      // Send text as a user turn
-      session.send({ parts: [{ text }] }, true);
-      console.log("[GeminiService] Sent text message:", text);
-    } catch (e) {
-      console.error("[GeminiService] Failed to send text:", e);
-    }
-  }
-
-  // --- NEW: Method to send image frames (Vision) ---
   async sendImageFrame(base64Data: string) {
     if (!this.sessionPromise || !this.isActive) return;
     try {
@@ -262,10 +244,9 @@ export class GeminiLiveClient {
 
     const source = this.outputAudioContext.createBufferSource();
     source.buffer = buffer;
-    source.connect(this.outputGain); // Connect to Gain -> Analyser -> Dest
+    source.connect(this.outputGain);
 
     const now = this.outputAudioContext.currentTime;
-    // Schedule next chunk at the end of the previous one, or now if we are lagging
     const startTime = Math.max(now, this.nextStartTime);
     
     source.start(startTime);
@@ -282,23 +263,17 @@ export class GeminiLiveClient {
   private async startMicrophone() {
     if (!this.inputAudioContext || !this.outputAudioContext) return;
 
-    // FORCE RESUME AudioContexts (Crucial for mobile/first-interaction)
     if (this.inputAudioContext.state === 'suspended') {
-      console.log("[GeminiService] Resuming Input AudioContext...");
       await this.inputAudioContext.resume();
     }
     if (this.outputAudioContext.state === 'suspended') {
-      console.log("[GeminiService] Resuming Output AudioContext...");
       await this.outputAudioContext.resume();
     }
 
     try {
       this.mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      console.log("[GeminiService] MediaStream acquired");
-      
       this.source = this.inputAudioContext.createMediaStreamSource(this.mediaStream);
       
-      // Setup Input Analysis
       this.inputAnalyser = this.inputAudioContext.createAnalyser();
       this.inputAnalyser.fftSize = 256;
       this.inputAnalyser.smoothingTimeConstant = 0.1;
@@ -306,12 +281,17 @@ export class GeminiLiveClient {
       this.processor = this.inputAudioContext.createScriptProcessor(4096, 1, 1);
 
       this.processor.onaudioprocess = (e) => {
+        // Drop packets if the socket is not yet open
         if (!this.isActive) return;
 
         const inputData = e.inputBuffer.getChannelData(0);
         
-        // Downsample/Convert float32 to PCM16
-        const pcm16 = float32ToPCM16(inputData);
+        // 1. DOWNSAMPLE to 16kHz (Standardize input)
+        const currentRate = this.inputAudioContext?.sampleRate || 48000;
+        const downsampled = downsampleTo16k(inputData, currentRate);
+
+        // 2. Convert to PCM16
+        const pcm16 = float32ToPCM16(downsampled);
         const pcmBlob = new Uint8Array(pcm16.buffer);
         const base64Data = arrayBufferToBase64(pcmBlob.buffer);
 
@@ -321,28 +301,28 @@ export class GeminiLiveClient {
             try {
               session.sendRealtimeInput({
                 media: {
-                  mimeType: `audio/pcm;rate=${this.inputAudioContext?.sampleRate || 16000}`,
+                  mimeType: 'audio/pcm;rate=16000', // STRICTLY 16000
                   data: base64Data
                 }
               });
             } catch (err) {
-              // Gracefully handle send errors if connection dropped
-              // console.warn("[GeminiService] Send failed (likely closed):", err);
+              // Ignore closed session errors
             }
           }).catch(() => {
-             // Promise rejection (connection failed), ignore
+             // Ignore promise rejections
           });
         }
       };
 
-      // Connect: Source -> Analyser -> Processor -> Destination
       this.source.connect(this.inputAnalyser);
       this.inputAnalyser.connect(this.processor);
       this.processor.connect(this.inputAudioContext.destination);
       
-      console.log("[GeminiService] Audio processing pipeline connected");
-    } catch (error) {
+    } catch (error: any) {
       console.error("[GeminiService] Error accessing microphone:", error);
+      if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+          throw new Error("Microphone permission denied. Please allow access in browser settings.");
+      }
       throw error;
     }
   }
@@ -352,7 +332,6 @@ export class GeminiLiveClient {
       this.mediaStream.getAudioTracks().forEach(track => {
         track.enabled = !muted;
       });
-      console.log(`[GeminiService] Microphone ${muted ? 'muted' : 'unmuted'}`);
     }
   }
 

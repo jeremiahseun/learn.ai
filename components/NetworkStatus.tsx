@@ -36,21 +36,21 @@ const NetworkStatus: React.FC<NetworkStatusProps> = ({ state }) => {
   };
 
   const getLabel = () => {
-     if (state === ConnectionState.CONNECTED) return 'Excellent';
-     if (state === ConnectionState.CONNECTING) return 'Joining...';
+     if (state === ConnectionState.CONNECTED) return 'Live';
+     if (state === ConnectionState.CONNECTING) return 'Connecting...';
      if (state === ConnectionState.DISCONNECTED) return 'Offline';
      return 'Error';
   };
 
   return (
-    <div className="flex items-center gap-2 bg-black/40 backdrop-blur-sm px-3 py-1.5 rounded-full border border-white/5">
+    <div className="flex items-center gap-2 px-2" title={`Connection Status: ${state}`}>
        <div className={`flex items-end gap-0.5 h-3 ${getColor()}`}>
           <div className={`w-1 rounded-sm ${bars > 0 ? 'h-1.5' : 'h-1 opacity-20'}`}></div>
           <div className={`w-1 rounded-sm ${bars > 1 ? 'h-2' : 'h-1.5 opacity-20'}`}></div>
           <div className={`w-1 rounded-sm ${bars > 2 ? 'h-2.5' : 'h-2 opacity-20'}`}></div>
           <div className={`w-1 rounded-sm ${bars > 3 ? 'h-3' : 'h-2.5 opacity-20'}`}></div>
        </div>
-       <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wider hidden sm:block">
+       <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider hidden sm:block">
          {getLabel()}
        </span>
     </div>

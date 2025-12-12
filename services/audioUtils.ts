@@ -1,3 +1,4 @@
+
 // Utilities to handle PCM audio conversion for Gemini Live API
 
 export function base64ToUint8Array(base64: string): Uint8Array {
@@ -46,4 +47,15 @@ export function float32ToPCM16(float32Array: Float32Array): Int16Array {
     int16Array[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
   }
   return int16Array;
+}
+
+export function downsampleTo16k(input: Float32Array, inputRate: number): Float32Array {
+  if (inputRate === 16000) return input;
+  const ratio = inputRate / 16000;
+  const newLength = Math.floor(input.length / ratio);
+  const result = new Float32Array(newLength);
+  for (let i = 0; i < newLength; i++) {
+    result[i] = input[Math.floor(i * ratio)];
+  }
+  return result;
 }

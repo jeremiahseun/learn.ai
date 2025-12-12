@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { Mic, MicOff, BrainCircuit, Info, LayoutTemplate, Volume2, ArrowLeft, User, PenTool, Eraser, MousePointer2, ChevronRight, ChevronLeft, Play, Signal, Smartphone, RotateCw, Maximize2, Minimize2, Settings, X, ChevronDown, ChevronUp, Camera, Grid3X3, FastForward, Captions } from 'lucide-react';
 import WhiteboardCanvas, { WhiteboardHandle } from '../components/WhiteboardCanvas';
@@ -63,10 +64,12 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
   // Refs for saving & context
   const boardsRef = useRef(boards);
   const sessionTitleRef = useRef(sessionTitle);
+  const retryCountRef = useRef(retryCount);
 
   useEffect(() => { activeBoardIdRef.current = activeBoardId; }, [activeBoardId]);
   useEffect(() => { boardsRef.current = boards; }, [boards]);
   useEffect(() => { sessionTitleRef.current = sessionTitle; }, [sessionTitle]);
+  useEffect(() => { retryCountRef.current = retryCount; }, [retryCount]);
 
   // Handle Fullscreen Change Events
   useEffect(() => {
@@ -91,12 +94,14 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
 
   // Auto-Reconnect Strategy
   useEffect(() => {
-    if (connectionState === ConnectionState.ERROR && retryCount < 3) {
-       console.log(`[SessionView] Connection dropped. Auto-reconnecting (Attempt ${retryCount + 1}/3)...`);
+    if (connectionState === ConnectionState.ERROR && retryCount < 5) { // Increased max retries to 5
+       const backoffDelay = Math.min(1000 * Math.pow(2, retryCount), 10000); // Exponential backoff
+       console.log(`[SessionView] Connection dropped. Auto-reconnecting in ${backoffDelay}ms (Attempt ${retryCount + 1}/5)...`);
+       
        const timer = setTimeout(() => {
           setRetryCount(prev => prev + 1);
           connectSession(true); // isReconnect = true
-       }, 3000);
+       }, backoffDelay);
        return () => clearTimeout(timer);
     }
     
@@ -244,13 +249,6 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
     isBoardDirtyRef.current = true;
   };
 
-  const handleNudge = () => {
-    if (liveClientRef.current) {
-       // Send a system message masquerading as user context or strict direction
-       liveClientRef.current.sendText("[SYSTEM]: The user is asking you to move on immediately. Stop the current explanation and advance to the next topic.");
-    }
-  };
-
   const toggleGrid = () => {
     setBoards(prev => prev.map(b => {
       if (b.id === activeBoardId) {
@@ -380,26 +378,33 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
       await liveClientRef.current.connect(
         {
           onToolCall: async (name, args) => executeBoardCommand(name, args),
-          onClose: () => setConnectionState(ConnectionState.DISCONNECTED),
-          onError: (err) => {
-            if (err.message.includes("Internal error") && retryCount < 3) {
-               setConnectionState(ConnectionState.ERROR); 
-               return;
+          onClose: () => {
+            // Only disconnect if we aren't already handling an error state
+            if (connectionState !== ConnectionState.ERROR) {
+                setConnectionState(ConnectionState.DISCONNECTED);
             }
-            setErrorMsg("Connection error: " + err.message);
-            setConnectionState(ConnectionState.ERROR);
+          },
+          onError: (err) => {
+            console.warn("[SessionView] Session Error:", err);
+            // Check for temporary service issues
+            const isServiceError = err.message.toLowerCase().includes("unavailable") || 
+                                   err.message.toLowerCase().includes("internal") || 
+                                   err.message.toLowerCase().includes("aborted");
+            
+            if (isServiceError && retryCountRef.current < 5) {
+               setConnectionState(ConnectionState.ERROR); 
+               // This will trigger the useEffect to retry
+            } else {
+               setErrorMsg(isServiceError ? "Service temporarily unavailable. Please try again later." : "Connection error: " + err.message);
+               setConnectionState(ConnectionState.ERROR);
+            }
           },
           onCaption: (text) => {
-            setCaptionText(prev => {
-              // Accumulate text, but keep it from getting too large if needed
-              // For a simple movie subtitle effect, we just append.
-              return prev + text;
-            });
-            // Reset hide timer
+            setCaptionText(prev => prev + text);
             if (captionTimeoutRef.current) clearTimeout(captionTimeoutRef.current);
             captionTimeoutRef.current = setTimeout(() => {
                 setCaptionText('');
-            }, 4000); // Clear after 4 seconds of silence
+            }, 4000); 
           }
         }, 
         user,
@@ -414,11 +419,20 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
       setConnectionState(ConnectionState.CONNECTED);
 
     } catch (e: any) {
-      setConnectionState(ConnectionState.ERROR);
-      if (e.message.includes('Microphone')) {
-         setErrorMsg("Microphone Access Denied. Please allow microphone permissions.");
+      // Handle immediate connection failures (e.g. 503 from connect call)
+      console.error("[SessionView] Immediate Connect Error:", e);
+      const isServiceError = e.message.toLowerCase().includes("unavailable") || 
+                             e.message.toLowerCase().includes("internal");
+
+      if (isServiceError && retryCountRef.current < 5) {
+         setConnectionState(ConnectionState.ERROR);
       } else {
-         setErrorMsg(e.message);
+         if (e.message.includes('Microphone')) {
+            setErrorMsg("Microphone Access Denied. Please allow microphone permissions.");
+         } else {
+            setErrorMsg(e.message);
+         }
+         setConnectionState(ConnectionState.ERROR);
       }
     }
   };
@@ -450,11 +464,11 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
           </div>
         </div>
 
-        {/* Audio Visualizer (Holo Style) - Flow Layout now, hidden on smaller screens */}
+        {/* Audio Visualizer - Always visible now */}
         {connectionState === ConnectionState.CONNECTED && (
-          <div className="hidden xl:flex flex-none items-center space-x-4 px-6 py-1.5 bg-black/40 rounded-full border border-cyan-500/30 shadow-[0_0_15px_rgba(34,211,238,0.15)] backdrop-blur-md mx-4">
+          <div className="flex flex-none items-center space-x-2 sm:space-x-4 px-3 sm:px-6 py-1.5 bg-black/40 rounded-full border border-cyan-500/30 shadow-[0_0_15px_rgba(34,211,238,0.15)] backdrop-blur-md mx-2">
              <AudioPulse active={!isMicMuted} volume={isMicMuted ? 0 : audioLevels.input} color="blue" label="YOU" />
-             <div className="h-6 w-px bg-white/10"></div>
+             <div className="h-4 sm:h-6 w-px bg-white/10"></div>
              <AudioPulse active={true} volume={audioLevels.output} color="cyan" label="DEW" />
           </div>
         )}
@@ -465,22 +479,14 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
                 <button
                    onClick={() => setShowCaptions(!showCaptions)}
                    title={showCaptions ? "Hide Captions" : "Show Captions"}
-                   className={`p-2.5 rounded-full transition-all border flex-shrink-0 ${showCaptions ? 'bg-cyan-500/20 text-cyan-400 border-cyan-500/50 shadow-[0_0_10px_rgba(34,211,238,0.3)]' : 'bg-white/5 text-slate-400 border-white/10 hover:text-white hover:bg-white/10'}`}
+                   className={`p-2 sm:p-2.5 rounded-full transition-all border flex-shrink-0 ${showCaptions ? 'bg-cyan-500/20 text-cyan-400 border-cyan-500/50 shadow-[0_0_10px_rgba(34,211,238,0.3)]' : 'bg-white/5 text-slate-400 border-white/10 hover:text-white hover:bg-white/10'}`}
                 >
                    <Captions size={18} />
                 </button>
 
                 <button
-                   onClick={handleNudge}
-                   title="Nudge: Tell Dew to move on"
-                   className="p-2.5 rounded-full bg-white/5 text-yellow-400 hover:bg-yellow-500/10 border border-yellow-500/30 transition-all hover:shadow-[0_0_10px_rgba(250,204,21,0.2)] flex-shrink-0"
-                >
-                   <FastForward size={18} />
-                </button>
-
-                <button
                     onClick={toggleMute}
-                    className={`p-2.5 rounded-full transition-all border flex-shrink-0 ${isMicMuted ? 'bg-red-500/10 text-red-400 border-red-500/30' : 'bg-white/5 text-slate-300 hover:text-white border-white/10 hover:bg-white/10'}`}
+                    className={`p-2 sm:p-2.5 rounded-full transition-all border flex-shrink-0 ${isMicMuted ? 'bg-red-500/10 text-red-400 border-red-500/30' : 'bg-white/5 text-slate-300 hover:text-white border-white/10 hover:bg-white/10'}`}
                 >
                    {isMicMuted ? <MicOff size={18} /> : <Mic size={18} />}
                 </button>
@@ -493,7 +499,7 @@ const SessionView: React.FC<SessionViewProps> = ({ session, user, apiKey, onSave
 
            <button 
              onClick={() => setIsThinkingOpen(true)}
-             className="hidden md:flex items-center space-x-1 sm:space-x-2 text-xs sm:text-sm text-purple-300 hover:text-white px-3 py-2 rounded-lg hover:bg-purple-500/10 border border-transparent hover:border-purple-500/30 transition-all flex-shrink-0"
+             className="hidden lg:flex items-center space-x-1 sm:space-x-2 text-xs sm:text-sm text-purple-300 hover:text-white px-3 py-2 rounded-lg hover:bg-purple-500/10 border border-transparent hover:border-purple-500/30 transition-all flex-shrink-0"
            >
              <BrainCircuit size={16} />
              <span>Deep Synthesis</span>
