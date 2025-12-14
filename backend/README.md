@@ -29,6 +29,21 @@ This endpoint proxies requests to the Gemini API, allowing the frontend to commu
   ```
 - **Response:** The response from the Gemini API is forwarded directly to the client.
 
+### Chat Streaming API
+
+This endpoint provides a streaming connection to the Gemini API, allowing for real-time chat experiences.
+
+- **Endpoint:** `POST /api/chat/stream`
+- **Authentication:** Required. The request must include an `Authorization` header with a Supabase JWT.
+  - **Header:** `Authorization: Bearer <SUPABASE_JWT>`
+- **Request Body:** A JSON object with a `prompt` property.
+  ```json
+  {
+    "prompt": "Hello, world!"
+  }
+  ```
+- **Response:** A stream of Server-Sent Events (SSE). The frontend can connect to this endpoint to receive the AI's response in chunks as it is generated.
+
 ### Webhooks
 
 This endpoint is used to receive webhooks from Dodo Payments.

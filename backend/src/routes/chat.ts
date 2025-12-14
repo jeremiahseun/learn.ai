@@ -9,5 +9,6 @@ const chatRouter = new Hono<HonoEnv>()
 chatRouter.use('*', authMiddleware)
 
 chatRouter.post('/', (c) => chatController.generateResponse(c))
+chatRouter.post('/stream', (c) => chatController.generateStreamResponse(c))
 
 export default chatRouter
